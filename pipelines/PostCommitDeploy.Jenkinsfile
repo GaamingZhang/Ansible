@@ -22,9 +22,9 @@ pipeline {
                 echo "项目目录: ${ANSIBLE_PROJECT_DIR}"
                 echo "=========================================="
                 
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             echo "成功连接到 Ansible 控制节点"
                             hostname
                             whoami
@@ -68,9 +68,9 @@ pipeline {
             }
             steps {
                 echo "部署 Kubernetes 集群..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/kubernetes/deploy-k8s-cluster.yml
@@ -86,9 +86,9 @@ pipeline {
             }
             steps {
                 echo "部署 GitLab..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/GitLab/deploy-gitlab.yml
@@ -104,9 +104,9 @@ pipeline {
             }
             steps {
                 echo "部署 Jenkins..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/Jenkins/deploy-jenkins.yml
@@ -122,9 +122,9 @@ pipeline {
             }
             steps {
                 echo "部署 Prometheus 监控..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml
@@ -142,9 +142,9 @@ pipeline {
             }
             steps {
                 echo "部署 Grafana..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/Grafana/deploy-grafana.yml
@@ -160,9 +160,9 @@ pipeline {
             }
             steps {
                 echo "部署 Redis 集群..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/Redis/deploy-redis-cluster.yml
@@ -178,9 +178,9 @@ pipeline {
             }
             steps {
                 echo "部署 MySQL..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/MySQL/deploy-mysql.yml
@@ -196,9 +196,9 @@ pipeline {
             }
             steps {
                 echo "部署 MongoDB..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/MongoDB/deploy-mongodb.yml
@@ -214,9 +214,9 @@ pipeline {
             }
             steps {
                 echo "部署 ElasticSearch..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/ElasticSearch/deploy-elasticsearch.yml
@@ -232,9 +232,9 @@ pipeline {
             }
             steps {
                 echo "部署 Kafka..."
-                sshagent(['ansible-control-node-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ansible-control-node-ssh', keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                        ssh -i \${SSH_KEY} -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
                             cd ${ANSIBLE_PROJECT_DIR}
                             git pull origin main
                             ansible-playbook -i inventory/hosts.ini playbook/Kafka/deploy-kafka.yml
