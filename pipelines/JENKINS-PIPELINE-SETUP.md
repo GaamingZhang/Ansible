@@ -49,6 +49,7 @@ ansible/                                 # GitLab 仓库根目录
 | Git Plugin | Git 源码管理 | ✓ |
 | Pipeline | 流水线支持 | ✓ |
 | Pipeline: Multibranch | 多分支流水线 | ✓ |
+| Generic Webhook Trigger | 通用Webhook触发器 | ✓ |
 | SSH Agent Plugin | SSH 密钥管理 | ✓ |
 | Credentials Plugin | 凭据管理 | ✓ |
 | Timestamper | 时间戳 | 推荐 |
@@ -62,7 +63,7 @@ ssh node@192.168.31.70
 # 使用 jenkins-cli 安装插件
 java -jar /var/cache/jenkins/war/WEB-INF/jenkins-cli.jar -s http://localhost:8080/ \
   install-plugin gitlab-plugin git pipeline-model-definition \
-  workflow-aggregator ssh-agent credentials timestamper ansicolor
+  workflow-aggregator generic-webhook-trigger ssh-agent credentials timestamper ansicolor
   
 # 重启 Jenkins
 sudo systemctl restart jenkins
@@ -102,6 +103,10 @@ sudo apt install -y ansible git
 # 切换到 jenkins 用户
 sudo su - jenkins
 
+# 创建 .ssh 目录（如果不存在）
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
 # 生成 SSH 密钥（如果没有）
 ssh-keygen -t rsa -b 4096 -C "jenkins@192.168.31.70" -f ~/.ssh/id_rsa -N ""
 
@@ -117,6 +122,48 @@ ssh node@192.168.31.10 "hostname && ansible --version"
 sudo su - jenkins
 ssh-keyscan 192.168.31.10 >> ~/.ssh/known_hosts
 ```
+
+### 4. 配置 Jenkins 到 GitLab 的 SSH 信任
+
+**关键步骤**：Jenkins 需要信任 GitLab 服务器的 SSH 主机密钥
+
+在 Jenkins 服务器 (`192.168.31.70`) 上：
+
+```bash
+# 切换到 jenkins 用户（如果还没有）
+sudo su - jenkins
+
+# 确保 .ssh 目录存在
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# 添加 GitLab 服务器的 SSH 主机密钥到 known_hosts
+ssh-keyscan -t rsa,ecdsa,ed25519 192.168.31.50 >> ~/.ssh/known_hosts
+
+# 设置正确的权限
+chmod 644 ~/.ssh/known_hosts
+
+# 验证密钥已添加
+cat ~/.ssh/known_hosts | grep 192.168.31.50
+
+# 测试 SSH 连接到 GitLab（会提示 Welcome to GitLab）
+ssh -T git@192.168.31.50
+```
+
+如果测试连接失败，检查：
+```bash
+# 确保 known_hosts 文件权限正确
+chmod 644 ~/.ssh/known_hosts
+
+# 查看详细的 SSH 调试信息
+ssh -vT git@192.168.31.50
+```
+
+> **重要**：如果不执行此步骤，Jenkins 扫描分支时会报错：
+> ```
+> No ED25519 host key is known for 192.168.31.50 and you have requested strict checking.
+> Host key verification failed.
+> ```
 
 ## 步骤 1: 在 GitLab 创建 Personal Access Token
 
@@ -258,7 +305,9 @@ rm -rf test-clone
 1. 点击 **Add source** → **Git**
 2. 配置:
    - **Project Repository**: `git@192.168.31.50:gaamingzhang/ansible.git`
-   - **Credentials**: 选择 `gitlab-api-token` （用于 HTTP 访问）或配置 SSH 凭据
+   - **Credentials**: 
+     - 如果使用 SSH：需要添加 SSH 凭据（见下文）
+     - 如果使用 HTTP：选择 `gitlab-api-token`
    - **Behaviors**:
      - 点击 **Add** → **Discover branches**
        - **Strategy**: `All branches`
@@ -266,6 +315,22 @@ rm -rf test-clone
        - **Regular expression**: `main` (只监控 main 分支)
      - 点击 **Add** → **Clean before checkout**
      - 点击 **Add** → **Clean after checkout**
+
+> **配置 SSH 凭据（推荐）**：
+> 1. 访问: http://192.168.31.70:8080/manage/credentials/store/system/domain/_/
+> 2. 点击 **Add Credentials**
+> 3. 配置:
+>    - **Kind**: `SSH Username with private key`
+>    - **Scope**: `Global`
+>    - **ID**: `gitlab-ssh-key`
+>    - **Description**: `SSH Key for GitLab (192.168.31.50)`
+>    - **Username**: `git`
+>    - **Private Key**: 选择 `Enter directly`
+>    - 粘贴 Jenkins 用户的私钥: `sudo cat /var/lib/jenkins/.ssh/id_rsa`
+> 4. 点击 **Create**
+> 5. 返回 Job 配置，在 **Credentials** 中选择 `gitlab-ssh-key`
+> 
+> **重要**：确保已执行"步骤 0.4：配置 Jenkins 到 GitLab 的 SSH 信任"，否则会报 host key verification 错误
 
 #### Build Configuration 部分:
 - **Mode**: `by Jenkinsfile`
@@ -289,34 +354,141 @@ rm -rf test-clone
 
 ### 5.1 获取 Webhook URL
 
-1. 在 Jenkins Job 页面,点击左侧的 **Branch Indexing Log**
-2. 或者直接访问: http://192.168.31.70:8080/job/ansible-infrastructure-deployment/
+有三种 Webhook 触发方式：
 
-Webhook URL 格式:
+#### 方式 1: Generic Webhook Trigger（推荐）
+
+最灵活的方式，适用于所有类型的 Job：
+
 ```
-http://192.168.31.70:8080/project/ansible-infrastructure-deployment
+http://192.168.31.70:8080/generic-webhook-trigger/invoke?token=<YOUR_TOKEN>
 ```
 
-### 5.2 在 GitLab 配置 Webhook
+#### 方式 2: Git Notify Commit
+
+适用于 Git 仓库的提交通知：
+
+```
+http://192.168.31.70:8080/git/notifyCommit?url=http://192.168.31.50/gaamingzhang/ansible.git
+```
+
+#### 方式 3: Multibranch Webhook Trigger
+
+专门用于 Multibranch Pipeline：
+
+```
+http://192.168.31.70:8080/multibranch-webhook-trigger/invoke?token=<YOUR_TOKEN>
+```
+
+**推荐使用方式1 (Generic Webhook Trigger)**，因为：
+- 不需要特定格式的仓库URL
+- GitLab能够轻松验证通过
+- 支持自定义参数和过滤条件
+- 更灵活的配置选项
+
+### 5.2 配置 Generic Webhook Trigger
+
+1. 进入 Jenkins Job 配置页面
+2. 滚动到 **Build Triggers** 部分
+3. 勾选 **Generic Webhook Trigger**
+4. 配置 Token（重要）：
+   - 点击 **Token** 输入框
+   - 输入一个唯一的 token，例如：`ansible-infrastructure-deployment-token`
+   - 这个 token 将用于 Webhook URL
+
+5. （可选）添加过滤条件：
+   - **Post content parameters**: 可以从 GitLab 的 Webhook payload 中提取变量
+   - 例如提取分支名：
+     - **Variable**: `branch`
+     - **Expression**: `$.ref`
+     - **JSONPath**: 勾选
+   - **Optional filter**:
+     - **Expression**: `^refs/heads/main$`
+     - **Text**: `$branch`
+     - 这样只有 main 分支的推送才会触发
+
+6. 点击 **Save** 保存配置
+
+### 5.3 配置 GitLab 网络出站请求（GitLab 18.6+）
+
+**重要**: GitLab 18.6 默认限制向本地网络发送 Webhook 请求，需要先配置允许的出站请求。
+
+#### 5.3.1 配置管理员网络出站设置
+
+1. 以管理员身份登录 GitLab: http://192.168.31.50
+2. 点击左上角菜单 → **Admin Area**（或访问 http://192.168.31.50/admin）
+3. 左侧菜单选择 **Settings** → **Network**
+4. 展开 **Outbound requests** 部分
+5. 配置以下选项:
+   - ✓ 勾选 **Allow requests to the local network from webhooks and integrations**
+   - 在 **Local IP addresses and domain names that hooks and integrations can access** 中添加:
+     ```
+     192.168.31.70
+     ```
+   - 或者添加整个子网:
+     ```
+     192.168.31.0/24
+     ```
+6. 点击 **Save changes**
+
+> **说明**: 
+> - GitLab 18.x 为安全考虑，默认阻止 Webhook 向内网 IP 发送请求
+> - 配置后才能向 Jenkins (192.168.31.70) 发送 Webhook
+> - 建议只添加必要的 IP 地址，不要开放整个内网
+
+#### 5.3.2 在 GitLab 项目配置 Webhook
 
 1. 访问 GitLab 项目: http://192.168.31.50/gaamingzhang/ansible
 2. 点击 **Settings** → **Webhooks**
 3. 点击 **Add new webhook**
 4. 配置:
-   - **URL**: `http://192.168.31.70:8080/project/ansible-infrastructure-deployment`
-   - **Secret token**: (留空或生成一个)
+   - **URL**: `http://192.168.31.70:8080/generic-webhook-trigger/invoke?token=ansible-infrastructure-deployment-token`
+   - **Secret token**: (留空)
    - **Trigger**:
      - ✓ `Push events` - 分支: `main`
-     - ✓ `Merge request events`
-   - **SSL verification**: ✗ (因为使用 HTTP)
+     - ✓ `Merge request events` (可选)
+   - **SSL verification**: ✗ Enable SSL verification (因为使用 HTTP)
 5. 点击 **Add webhook**
 
-### 5.3 测试 Webhook
+如果看到错误提示：
+```
+Url is blocked: Requests to the local network are not allowed
+```
+说明未完成步骤 5.3.1 的管理员配置，请先配置网络出站请求白名单。
+
+> **关键优势**: 
+> - **简单的URL格式**: 不包含仓库地址，只需要 token
+> - **易于验证**: GitLab 可以轻松验证这种格式的 URL
+> - **灵活配置**: 可以在 Jenkins 中自定义触发条件
+> - **不依赖仓库URL**: 避免了 SSH 格式 URL 的验证问题
+
+### 5.4 测试 Webhook（备选方案：Git Notify）
+
+如果你更喜欢使用 Git Notify 方式，需要注意：
+
+**重要**：GitLab Webhook URL 验证不接受包含特殊字符（如 `@`、`:`）的URL，因此必须使用 **HTTP 格式**的仓库地址。
+
+配置:
+- **URL**: `http://192.168.31.70:8080/git/notifyCommit?url=http://192.168.31.50/gaamingzhang/ansible.git`
+
+> **说明**: 
+> - **必须使用 HTTP 格式**: `http://192.168.31.50/gaamingzhang/ansible.git`
+> - **不要使用 SSH 格式**: ~~`git@192.168.31.50:gaamingzhang/ansible.git`~~ (GitLab Webhook验证会拒绝)
+> - Jenkins 的 `git/notifyCommit` 端点会智能匹配所有配置了该仓库的 Job（无论 Job 使用 SSH 还是 HTTP）
+
+### 5.5 测试 Webhook
 
 1. 在 Webhooks 列表中找到刚创建的 webhook
 2. 点击 **Test** → **Push events**
 3. 应该看到 HTTP 200 响应
-4. 返回 Jenkins,应该看到新的构建开始
+4. 返回 Jenkins，应该看到新的构建开始或 **Scan Multibranch Pipeline Log** 中有新的扫描记录
+
+如果测试失败，检查以下几点：
+- Jenkins 服务是否运行: `ssh node@192.168.31.70 "sudo systemctl status jenkins"`
+- 防火墙是否允许 GitLab 访问 Jenkins: `sudo ufw allow from 192.168.31.50 to any port 8080`
+- URL 格式是否正确
+- Token 是否正确（如果使用 Generic Webhook Trigger）
+- 仓库 URL 是否使用 HTTP 格式（如果使用 Git Notify 方式）
 
 ## 步骤 6: 验证流水线
 
@@ -454,7 +626,7 @@ ansible prometheus_cluster -i inventory/hosts.ini -m shell -a "systemctl status 
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  GitLab Webhook 触发 Jenkins                                     │
-│  POST http://192.168.31.70:8080/project/ansible-infra...        │
+│  POST http://192.168.31.70:8080/git/notifyCommit?url=http://... │
 │  Jenkins Server: 192.168.31.70                                  │
 └────────────────────┬────────────────────────────────────────────┘
                      │
@@ -595,22 +767,37 @@ post {
 
 ### 问题 1: Jenkins 无法连接 GitLab
 
-**症状**: Test Connection 失败
+**症状**: Test Connection 失败或 host key verification failed
 
 **解决**:
 ```bash
-# 在 Jenkins 服务器 (192.168.31.70) 测试连接
-ssh node@192.168.31.70
-curl http://192.168.31.50/api/v4/projects
+# 在 Jenkins 服务器 (192.168.31.70) 上
+# 切换到 jenkins 用户
+sudo su - jenkins
+
+# 添加 GitLab SSH 主机密钥
+ssh-keyscan -t rsa,ecdsa,ed25519 192.168.31.50 >> ~/.ssh/known_hosts
 
 # 测试 SSH 连接
 ssh -T git@192.168.31.50
+# 应该看到: Welcome to GitLab, @username!
+
+# 如果使用 HTTP API，测试连接
+curl http://192.168.31.50/api/v4/projects
 
 # 检查防火墙
 sudo ufw status
 sudo ufw allow from 192.168.31.70 to any port 80
 sudo ufw allow from 192.168.31.70 to any port 22
 ```
+
+**常见错误**:
+```
+No ED25519 host key is known for 192.168.31.50 and you have requested strict checking.
+Host key verification failed.
+```
+**原因**: Jenkins 的 known_hosts 文件中没有 GitLab 的主机密钥
+**解决**: 执行上面的 `ssh-keyscan` 命令
 
 ### 问题 2: Jenkins 无法 SSH 到 Ansible 控制节点
 
@@ -664,7 +851,7 @@ cat ~/.ssh/id_rsa.pub
    ```bash
    # 在 GitLab 服务器 (192.168.31.50) 上测试
    ssh node@192.168.31.50
-   curl -I http://192.168.31.70:8080/project/ansible-infrastructure-deployment
+   curl -I "http://192.168.31.70:8080/git/notifyCommit?url=git@192.168.31.50:gaamingzhang/ansible.git"
    ```
 
 3. 检查防火墙规则:
@@ -673,11 +860,24 @@ cat ~/.ssh/id_rsa.pub
    sudo ufw allow from 192.168.31.50 to any port 8080
    ```
 
-4. 检查 Jenkins 日志:
+4. 确认 Webhook URL 格式正确:
+   - **必须使用**: `http://192.168.31.70:8080/git/notifyCommit?url=http://192.168.31.50/gaamingzhang/ansible.git`
+   - **不要使用**: ~~`http://192.168.31.70:8080/git/notifyCommit?url=git@192.168.31.50:gaamingzhang/ansible.git`~~
+   - Webhook URL 中的仓库地址必须使用 HTTP 格式，GitLab 才能通过验证
+   - Jenkins 会自动匹配所有配置了该仓库的 Job（无论 Job 内部使用 SSH 还是 HTTP）
+
+5. 检查 Jenkins 日志:
    ```bash
    ssh node@192.168.31.70
    sudo journalctl -u jenkins -f
    sudo tail -f /var/log/jenkins/jenkins.log
+   ```
+
+6. 手动触发扫描验证 Job 配置正确:
+   ```bash
+   # 访问 Jenkins，点击 "Scan Multibranch Pipeline Now"
+   # 或通过 API 触发
+   curl -X POST http://192.168.31.70:8080/job/ansible-infrastructure-deployment/build
    ```
 
 ### 问题 5: Ansible 执行失败
