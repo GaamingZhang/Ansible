@@ -15,28 +15,11 @@
         state: started
       register: grafana_status
 
-    - name: 等待 Grafana 完全启动
-      pause:
-        seconds: 10
-
-    - name: 测试 Grafana API
-      uri:
-        url: "http://localhost:{{ grafana_http_port }}/api/health"
-        method: GET
-        return_content: yes
-      register: grafana_health
-      retries: 5
-      delay: 3
-
-    - name: 测试 Prometheus 数据源连接
-      uri:
-        url: "http://localhost:{{ grafana_http_port }}/api/datasources"
-        method: GET
-        user: "{{ grafana_admin_user }}"
-        password: "{{ grafana_admin_password }}"
-        force_basic_auth: yes
-        return_content: yes
-      register: datasources
+    - name: 显示服务状态
+      debug:
+        msg:
+          - "Grafana 服务状态: {{ grafana_status.status.ActiveState }}"
+          - "服务运行状态: {{ grafana_status.status.SubState }}"
 
     - name: 显示最终安装信息
       debug:

@@ -58,8 +58,8 @@ pipeline {
         )
         choice(
             name: 'DEPLOYMENT_MODE',
-            choices: ['sequential', 'parallel'],
-            description: '部署模式: sequential=顺序部署, parallel=并行部署'
+            choices: ['parallel','sequential'],
+            description: '部署模式: parallel=并行部署, sequential=顺序部署'
         )
         booleanParam(
             name: 'REQUIRE_APPROVAL',
