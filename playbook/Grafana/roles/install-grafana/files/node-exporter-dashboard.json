@@ -135,6 +135,96 @@
           "color": {
             "mode": "thresholds"
           },
+          "mappings": [
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "全部在线"
+                }
+              },
+              "type": "special"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^nodename$/",
+          "values": true
+        },
+        "textMode": "value",
+        "text": {}
+      },
+      "pluginVersion": "12.3.0",
+      "targets": [
+        {
+          "expr": "label_replace(up{job=\"all_nodes\"} == 0, \"nodename\", \"$1\", \"instance\", \"([^:]+):.*\") * on(instance) group_left(nodename) node_uname_info{job=\"all_nodes\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{nodename}}",
+          "refId": "A"
+        }
+      ],
+      "title": "离线节点",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "nodename"
+              ]
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "includeTimeField": false,
+            "mode": "seriesToRows",
+            "reducers": [
+              "allValues"
+            ]
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
           "max": 100,
           "min": 0,
@@ -161,8 +251,8 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 12,
-        "y": 0
+        "x": 0,
+        "y": 4
       },
       "id": 3,
       "options": {
@@ -220,8 +310,8 @@
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 18,
-        "y": 0
+        "x": 6,
+        "y": 4
       },
       "id": 4,
       "options": {
@@ -290,7 +380,7 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 4
       },
       "id": 5,
@@ -361,8 +451,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 4
+        "x": 0,
+        "y": 12
       },
       "id": 6,
       "options": {
@@ -432,7 +522,7 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 12
       },
       "id": 7,
@@ -503,8 +593,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 12
+        "x": 0,
+        "y": 20
       },
       "id": 8,
       "options": {
