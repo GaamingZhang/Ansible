@@ -1,0 +1,8 @@
+---
+- name: 初始化第一个主节点
+  hosts: kubernetes_first_master
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  roles:
+    - init-kubernetes-master

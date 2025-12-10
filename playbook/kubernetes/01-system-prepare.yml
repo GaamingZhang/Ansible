@@ -1,0 +1,8 @@
+---
+- name: 系统准备
+  hosts: kubernetes_cluster
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  roles:
+    - system-prepare

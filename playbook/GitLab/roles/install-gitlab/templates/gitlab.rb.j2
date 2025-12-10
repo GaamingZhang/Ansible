@@ -1,0 +1,89 @@
+## GitLab URL
+external_url '{{ gitlab_external_url }}'
+
+## GitLab 时区
+gitlab_rails['time_zone'] = 'Asia/Shanghai'
+
+## Git 数据存储路径
+git_data_dirs({
+  "default" => {
+    "path" => "{{ gitlab_data_dir }}"
+  }
+})
+
+## 备份配置
+gitlab_rails['backup_path'] = "{{ gitlab_backup_dir }}"
+gitlab_rails['backup_keep_time'] = {{ gitlab_backup_keep_time }}
+
+## SSH 配置
+gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+
+## Email 配置
+{% if gitlab_email_enabled %}
+gitlab_rails['gitlab_email_enabled'] = true
+gitlab_rails['gitlab_email_from'] = '{{ gitlab_email_from }}'
+gitlab_rails['gitlab_email_display_name'] = '{{ gitlab_email_display_name }}'
+gitlab_rails['gitlab_email_reply_to'] = '{{ gitlab_email_reply_to }}'
+
+## SMTP 配置
+gitlab_rails['smtp_enable'] = true
+gitlab_rails['smtp_address'] = "{{ gitlab_smtp_address }}"
+gitlab_rails['smtp_port'] = {{ gitlab_smtp_port }}
+gitlab_rails['smtp_user_name'] = "{{ gitlab_smtp_user }}"
+gitlab_rails['smtp_password'] = "{{ gitlab_smtp_password }}"
+gitlab_rails['smtp_domain'] = "{{ gitlab_smtp_domain }}"
+gitlab_rails['smtp_authentication'] = "{{ gitlab_smtp_authentication }}"
+gitlab_rails['smtp_enable_starttls_auto'] = {{ gitlab_smtp_starttls }}
+{% endif %}
+
+## Nginx 配置
+nginx['listen_port'] = {{ gitlab_http_port }}
+{% if gitlab_https_enabled %}
+nginx['listen_https'] = true
+nginx['redirect_http_to_https'] = true
+nginx['ssl_certificate'] = "{{ gitlab_ssl_certificate }}"
+nginx['ssl_certificate_key'] = "{{ gitlab_ssl_certificate_key }}"
+{% else %}
+nginx['listen_https'] = false
+{% endif %}
+
+## 性能优化
+{% if gitlab_reduce_memory %}
+## 减少内存占用配置
+puma['worker_processes'] = 2
+sidekiq['max_concurrency'] = 10
+prometheus_monitoring['enable'] = false
+{% endif %}
+
+## 禁用不需要的服务
+{% if not gitlab_registry_enabled %}
+registry['enable'] = false
+{% endif %}
+
+{% if not gitlab_pages_enabled %}
+pages_nginx['enable'] = false
+gitlab_pages['enable'] = false
+{% endif %}
+
+## 代理配置
+{% if http_proxy is defined and http_proxy != '' %}
+gitlab_rails['env'] = {
+  'http_proxy' => '{{ http_proxy }}',
+  'https_proxy' => '{{ https_proxy }}',
+  'no_proxy' => '{{ no_proxy }}'
+}
+{% endif %}
+
+## Git 配置
+gitlab_rails['gitlab_default_projects_features_issues'] = {{ gitlab_features_issues | lower }}
+gitlab_rails['gitlab_default_projects_features_merge_requests'] = {{ gitlab_features_merge_requests | lower }}
+gitlab_rails['gitlab_default_projects_features_wiki'] = {{ gitlab_features_wiki | lower }}
+gitlab_rails['gitlab_default_projects_features_snippets'] = {{ gitlab_features_snippets | lower }}
+gitlab_rails['gitlab_default_projects_features_builds'] = {{ gitlab_features_builds | lower }}
+
+## 用户和项目限制
+gitlab_rails['gitlab_default_can_create_group'] = {{ gitlab_default_can_create_group | lower }}
+gitlab_rails['gitlab_username_changing_enabled'] = {{ gitlab_username_changing_enabled | lower }}
+
+## 会话配置
+gitlab_rails['session_expire_delay'] = {{ gitlab_session_expire_delay }}

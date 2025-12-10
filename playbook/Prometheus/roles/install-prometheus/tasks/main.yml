@@ -1,0 +1,201 @@
+---
+- name: 创建 Prometheus 用户组
+  group:
+    name: "{{ prometheus_group }}"
+    state: present
+    system: yes
+
+- name: 创建 Prometheus 用户
+  user:
+    name: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    system: yes
+    shell: /sbin/nologin
+    home: "{{ prometheus_data_dir }}"
+    createhome: no
+
+- name: 创建 Prometheus 目录
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: '0755'
+  loop:
+    - "{{ prometheus_install_dir }}"
+    - "{{ prometheus_config_dir }}"
+    - "{{ prometheus_data_dir }}"
+    - "{{ prometheus_log_dir }}"
+    - "{{ prometheus_config_dir }}/rules"
+    - "{{ prometheus_config_dir }}/file_sd"
+
+- name: 下载 Prometheus
+  get_url:
+    url: "{{ prometheus_download_url }}"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    mode: '0644'
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 解压 Prometheus
+  unarchive:
+    src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    dest: "/tmp"
+    remote_src: yes
+
+- name: 复制 Prometheus 二进制文件
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "{{ prometheus_install_dir }}/{{ item }}"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: '0755'
+    remote_src: yes
+  loop:
+    - prometheus
+    - promtool
+
+- name: 检查 consoles 目录是否存在
+  stat:
+    path: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/consoles"
+  register: consoles_dir
+
+- name: 复制 Prometheus 控制台文件（如果存在）
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "{{ prometheus_config_dir }}/{{ item }}"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: '0644'
+    remote_src: yes
+  loop:
+    - consoles
+    - console_libraries
+  when: consoles_dir.stat.exists
+
+- name: 创建空的 consoles 目录（如果不存在）
+  file:
+    path: "{{ prometheus_config_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: '0755'
+  loop:
+    - consoles
+    - console_libraries
+  when: not consoles_dir.stat.exists
+
+- name: 配置 Prometheus
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: '0644'
+  notify: restart prometheus
+
+- name: 创建 Prometheus systemd service
+  template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: 清理临时文件
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    - "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+
+- name: 启动并启用 Prometheus 服务
+  systemd:
+    name: prometheus
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: 等待 Prometheus 启动
+  wait_for:
+    port: "{{ prometheus_port }}"
+    delay: 5
+    timeout: 60
+
+# Node Exporter 安装（如果启用）
+- name: 下载 Node Exporter
+  get_url:
+    url: "{{ node_exporter_download_url }}"
+    dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    mode: '0644'
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+  when: install_node_exporter
+
+- name: 解压 Node Exporter
+  unarchive:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    dest: "/tmp"
+    remote_src: yes
+  when: install_node_exporter
+
+- name: 复制 Node Exporter 二进制文件
+  copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: "{{ prometheus_install_dir }}/node_exporter"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_group }}"
+    mode: '0755'
+    remote_src: yes
+  when: install_node_exporter
+
+- name: 创建 Node Exporter systemd service
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: '0644'
+  notify: reload systemd
+  when: install_node_exporter
+
+- name: 清理 Node Exporter 临时文件
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
+  when: install_node_exporter
+
+- name: 启动并启用 Node Exporter 服务
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  when: install_node_exporter
+
+- name: 等待 Node Exporter 启动
+  wait_for:
+    port: "{{ node_exporter_port }}"
+    delay: 2
+    timeout: 30
+  when: install_node_exporter
+
+- name: 显示 Prometheus 访问信息
+  debug:
+    msg:
+      - "========================================"
+      - "Prometheus 安装成功!"
+      - "========================================"
+      - "Prometheus Web UI: http://{{ ansible_host }}:{{ prometheus_port }}"
+      - "Prometheus 配置: {{ prometheus_config_dir }}/prometheus.yml"
+      - "Prometheus 数据: {{ prometheus_data_dir }}"
+      - "========================================"
+      - "Node Exporter: http://{{ ansible_host }}:{{ node_exporter_port }}/metrics"
+      - "========================================"
+      - "验证命令:"
+      - "  curl http://{{ ansible_host }}:{{ prometheus_port }}/-/healthy"
+      - "  curl http://{{ ansible_host }}:{{ prometheus_port }}/api/v1/targets"
+      - "========================================"

@@ -1,0 +1,29 @@
+[Unit]
+Description=Redis In-Memory Data Store
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User={{ redis_user }}
+Group={{ redis_group }}
+ExecStart={{ redis_install_dir }}/bin/redis-server {{ redis_config_dir }}/redis.conf --daemonize yes
+{% if redis_password %}
+ExecStop={{ redis_install_dir }}/bin/redis-cli -a {{ redis_password }} shutdown
+{% else %}
+ExecStop={{ redis_install_dir }}/bin/redis-cli shutdown
+{% endif %}
+PIDFile={{ redis_pid_dir }}/redis.pid
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+# 工作目录
+WorkingDirectory={{ redis_data_dir }}
+
+# 安全设置
+PrivateTmp=yes
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

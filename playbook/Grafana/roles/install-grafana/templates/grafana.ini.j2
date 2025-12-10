@@ -1,0 +1,43 @@
+[paths]
+data = {{ grafana_data_dir }}
+logs = {{ grafana_logs_dir }}
+plugins = {{ grafana_plugins_dir }}
+provisioning = {{ grafana_provisioning_dir }}
+
+[server]
+http_port = {{ grafana_http_port }}
+http_addr = {{ grafana_http_addr }}
+domain = {{ grafana_domain }}
+root_url = {{ grafana_root_url }}
+
+[database]
+type = {{ grafana_database_type }}
+path = {{ grafana_database_path }}
+
+[security]
+admin_user = {{ grafana_admin_user }}
+admin_password = {{ grafana_admin_password }}
+
+[users]
+allow_sign_up = false
+allow_org_create = false
+auto_assign_org = true
+auto_assign_org_role = Viewer
+
+[auth.anonymous]
+enabled = false
+
+[log]
+mode = console file
+level = info
+
+[analytics]
+reporting_enabled = false
+check_for_updates = true
+
+[metrics]
+enabled = true
+
+[unified_alerting]
+enabled = true
+

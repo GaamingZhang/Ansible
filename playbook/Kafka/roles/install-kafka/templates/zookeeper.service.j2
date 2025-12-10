@@ -1,0 +1,21 @@
+[Unit]
+Description=Apache ZooKeeper Server
+Documentation=http://zookeeper.apache.org
+After=network.target
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+Environment="KAFKA_HEAP_OPTS=-Xmx512M -Xms512M"
+Environment="LOG_DIR={{ kafka_log_dir }}"
+ExecStart={{ kafka_install_dir }}/bin/zookeeper-server-start.sh {{ kafka_install_dir }}/config/zookeeper.properties
+ExecStop={{ kafka_install_dir }}/bin/zookeeper-server-stop.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zookeeper
+
+[Install]
+WantedBy=multi-user.target

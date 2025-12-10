@@ -1,0 +1,9 @@
+---
+- name: 其他主节点加入（Ubuntu专用）
+  hosts: kubernetes_masters:!kubernetes_first_master
+  become: yes
+  serial: 1
+  vars_files:
+    - ../../group_vars/all.yml
+  roles:
+    - join-kubernetes-master

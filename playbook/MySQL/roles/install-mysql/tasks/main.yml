@@ -1,0 +1,113 @@
+---
+- name: 更新 apt 缓存
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  environment:
+    http_proxy: "{{ lookup('env', 'http_proxy') | default('', true) }}"
+    https_proxy: "{{ lookup('env', 'https_proxy') | default('', true) }}"
+
+- name: 安装依赖包
+  apt:
+    name:
+      - python3-pip
+      - python3-pymysql
+    state: present
+  environment:
+    http_proxy: "{{ lookup('env', 'http_proxy') | default('', true) }}"
+    https_proxy: "{{ lookup('env', 'https_proxy') | default('', true) }}"
+
+- name: 设置 MySQL root 密码（空密码）
+  debconf:
+    name: mysql-server
+    question: mysql-server/root_password
+    value: ""
+    vtype: password
+
+- name: 确认 MySQL root 密码（空密码）
+  debconf:
+    name: mysql-server
+    question: mysql-server/root_password_again
+    value: ""
+    vtype: password
+
+- name: 安装 MySQL Server (最新版本)
+  apt:
+    name:
+      - mysql-server
+      - mysql-client
+    state: present
+    update_cache: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+    http_proxy: "{{ lookup('env', 'http_proxy') | default('', true) }}"
+    https_proxy: "{{ lookup('env', 'https_proxy') | default('', true) }}"
+
+- name: 确保 MySQL 服务已启动并开机自启
+  systemd:
+    name: mysql
+    state: started
+    enabled: yes
+
+- name: 创建 MySQL 自定义配置目录
+  file:
+    path: /etc/mysql/mysql.conf.d
+    state: directory
+    mode: '0755'
+
+- name: 部署 MySQL 自定义配置文件
+  template:
+    src: my.cnf.j2
+    dest: /etc/mysql/mysql.conf.d/custom.cnf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart mysql
+
+- name: 等待 MySQL 服务就绪
+  wait_for:
+    port: "{{ mysql_port }}"
+    delay: 5
+    timeout: 60
+
+- name: 配置 MySQL 允许无密码登录
+  shell: |
+    mysql -u root << 'EOF'
+    ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';
+    CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY '';
+    GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+    FLUSH PRIVILEGES;
+    EOF
+  ignore_errors: yes
+  no_log: false
+
+- name: 创建数据库
+  mysql_db:
+    name: "{{ item.name }}"
+    encoding: "{{ item.encoding | default('utf8mb4') }}"
+    collation: "{{ item.collation | default('utf8mb4_unicode_ci') }}"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  loop: "{{ mysql_databases }}"
+  when: mysql_databases | length > 0
+
+- name: 创建数据库用户
+  mysql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    priv: "{{ item.priv }}"
+    host: "{{ item.host | default('localhost') }}"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  loop: "{{ mysql_users }}"
+  when: mysql_users | length > 0
+  no_log: true
+
+- name: 获取 MySQL 版本
+  command: mysql --version
+  register: mysql_version_output
+  changed_when: false
+
+- name: 显示 MySQL 版本
+  debug:
+    msg: "MySQL 安装完成: {{ mysql_version_output.stdout }}"

@@ -1,0 +1,61 @@
+---
+# GitLab 安装配置变量
+
+# GitLab 版本
+gitlab_version: "18.6.1-ce.0"
+
+# GitLab 访问配置
+gitlab_external_url: "http://192.168.31.50"
+gitlab_http_port: 80
+gitlab_ssh_port: 22
+
+# HTTPS 配置
+gitlab_https_enabled: false
+gitlab_ssl_certificate: "/etc/gitlab/ssl/gitlab.crt"
+gitlab_ssl_certificate_key: "/etc/gitlab/ssl/gitlab.key"
+
+# 数据存储路径
+gitlab_data_dir: "/var/opt/gitlab/git-data"
+gitlab_backup_dir: "/var/opt/gitlab/backups"
+gitlab_backup_keep_time: 604800  # 7天
+
+# Email 配置
+gitlab_email_enabled: false
+gitlab_email_from: "gitlab@example.com"
+gitlab_email_display_name: "GitLab"
+gitlab_email_reply_to: "noreply@example.com"
+
+# SMTP 配置 (如果启用 email)
+gitlab_smtp_address: "smtp.example.com"
+gitlab_smtp_port: 587
+gitlab_smtp_user: "gitlab@example.com"
+gitlab_smtp_password: "password"
+gitlab_smtp_domain: "example.com"
+gitlab_smtp_authentication: "login"
+gitlab_smtp_starttls: true
+
+# 性能优化
+gitlab_reduce_memory: true  # 内存受限环境设置为 true
+
+# 功能开关
+gitlab_registry_enabled: false  # Container Registry
+gitlab_pages_enabled: false     # GitLab Pages
+
+# Git 项目默认功能
+gitlab_features_issues: true
+gitlab_features_merge_requests: true
+gitlab_features_wiki: true
+gitlab_features_snippets: true
+gitlab_features_builds: true
+
+# 用户和权限
+gitlab_default_can_create_group: true
+gitlab_username_changing_enabled: true
+
+# 会话过期时间（分钟）
+gitlab_session_expire_delay: 10080  # 7天
+
+# 代理配置（如果需要）
+# http_proxy: "http://192.168.31.132:20171"
+# https_proxy: "http://192.168.31.132:20171"
+# no_proxy: "localhost,127.0.0.1,192.168.31.0/24"

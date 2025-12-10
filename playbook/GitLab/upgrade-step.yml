@@ -1,0 +1,124 @@
+---
+# GitLab 单步升级任务
+
+- name: "显示升级步骤: {{ upgrade_step.description }}"
+  debug:
+    msg: "准备升级到版本 {{ upgrade_step.version }}"
+
+- name: 创建备份 (如果启用)
+  block:
+    - name: 执行 GitLab 备份
+      shell: gitlab-backup create SKIP=registry
+      args:
+        executable: /bin/bash
+      register: backup_result
+      async: 1800
+      poll: 10
+      
+    - name: 显示备份结果
+      debug:
+        msg: "备份完成"
+  when: gitlab_backup_before_upgrade | default(true)
+
+- name: 检查磁盘空间
+  shell: df -h / | tail -1 | awk '{print $5}' | sed 's/%//'
+  register: disk_usage
+  changed_when: false
+
+- name: 警告：磁盘空间不足
+  debug:
+    msg: "警告：磁盘使用率 {{ disk_usage.stdout }}%，建议清理磁盘空间"
+  when: disk_usage.stdout | int > 80
+
+- name: 停止 GitLab 服务
+  shell: gitlab-ctl stop unicorn && gitlab-ctl stop puma && gitlab-ctl stop sidekiq
+  ignore_errors: yes
+
+- name: 等待服务停止
+  pause:
+    seconds: 10
+
+- name: 更新 APT 缓存
+  apt:
+    update_cache: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: "升级 GitLab 到版本 {{ upgrade_step.version }}"
+  apt:
+    name: gitlab-ce={{ upgrade_step.version }}
+    state: present
+    force: yes
+  environment:
+    EXTERNAL_URL: "{{ gitlab_external_url }}"
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+  register: gitlab_upgrade
+  async: 1800
+  poll: 10
+
+- name: 等待升级包安装完成
+  pause:
+    seconds: 15
+  when: gitlab_upgrade.changed
+
+- name: 执行 GitLab 重新配置
+  shell: gitlab-ctl reconfigure
+  register: reconfigure_result
+  async: 1200
+  poll: 10
+
+- name: 重启 GitLab 服务
+  shell: gitlab-ctl restart
+  register: restart_result
+
+- name: 等待 GitLab 服务启动
+  pause:
+    seconds: 30
+
+- name: 检查 GitLab 服务状态
+  shell: gitlab-ctl status
+  register: service_status
+  changed_when: false
+  failed_when: false
+
+- name: 显示服务状态
+  debug:
+    var: service_status.stdout_lines
+
+- name: 等待 GitLab Web 服务就绪
+  uri:
+    url: "{{ gitlab_external_url }}"
+    status_code: 200,302
+    validate_certs: no
+    timeout: 10
+  register: gitlab_health
+  until: gitlab_health.status in [200, 302]
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: 验证升级后的版本
+  shell: gitlab-rake gitlab:env:info | grep "GitLab information" -A 10 | grep "GitLab:" | awk '{print $2}'
+  register: upgraded_version
+  changed_when: false
+
+- name: 显示版本升级结果
+  debug:
+    msg: "成功升级到版本: {{ upgraded_version.stdout }}"
+
+- name: 运行数据库迁移检查
+  shell: gitlab-rake gitlab:check SANITIZE=true
+  register: check_result
+  changed_when: false
+  ignore_errors: yes
+
+- name: "完成升级步骤: {{ upgrade_step.description }}"
+  debug:
+    msg: "版本 {{ upgrade_step.version }} 升级完成，等待下一步..."
+
+- name: 升级步骤间暂停
+  pause:
+    seconds: 20
+    prompt: "升级到 {{ upgrade_step.description }} 完成，即将进行下一步升级..."

@@ -1,0 +1,216 @@
+---
+# MongoDB 安装任务
+
+- name: 更新 APT 缓存
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: 安装必要的依赖包
+  apt:
+    name:
+      - gnupg
+      - curl
+      - ca-certificates
+    state: present
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: 下载 MongoDB GPG 密钥
+  shell: |
+    curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
+  become: yes
+  args:
+    creates: /usr/share/keyrings/mongodb-server-8.0.gpg
+  when: ansible_os_family == "Debian"
+
+- name: 检测 Ubuntu 版本
+  set_fact:
+    ubuntu_codename: "{{ ansible_distribution_release }}"
+
+- name: 添加 MongoDB APT 仓库 (Ubuntu)
+  apt_repository:
+    repo: "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu {{ ubuntu_codename }}/mongodb-org/8.0 multiverse"
+    state: present
+    filename: mongodb-org-8.0
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: 更新 APT 缓存 (添加仓库后)
+  apt:
+    update_cache: yes
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: 安装 MongoDB (最新版本)
+  apt:
+    name:
+      - mongodb-org
+    state: latest
+  become: yes
+  when: ansible_os_family == "Debian" and mongodb_version == ""
+
+- name: 安装指定版本的 MongoDB
+  apt:
+    name:
+      - "mongodb-org={{ mongodb_version }}"
+      - "mongodb-org-database={{ mongodb_version }}"
+      - "mongodb-org-server={{ mongodb_version }}"
+      - "mongodb-mongosh={{ mongodb_version }}"
+      - "mongodb-org-mongos={{ mongodb_version }}"
+      - "mongodb-org-tools={{ mongodb_version }}"
+    state: present
+  become: yes
+  when: ansible_os_family == "Debian" and mongodb_version != ""
+
+- name: 创建 MongoDB 数据目录
+  file:
+    path: "{{ mongodb_data_dir }}"
+    state: directory
+    owner: mongodb
+    group: mongodb
+    mode: '0755'
+  become: yes
+
+- name: 创建 MongoDB 日志目录
+  file:
+    path: "{{ mongodb_log_dir }}"
+    state: directory
+    owner: mongodb
+    group: mongodb
+    mode: '0755'
+  become: yes
+
+- name: 配置系统限制 - 打开文件数
+  pam_limits:
+    domain: mongodb
+    limit_type: "{{ item }}"
+    limit_item: nofile
+    value: "{{ mongodb_max_open_files }}"
+  loop:
+    - soft
+    - hard
+  become: yes
+
+- name: 配置系统限制 - 进程数
+  pam_limits:
+    domain: mongodb
+    limit_type: "{{ item }}"
+    limit_item: nproc
+    value: "{{ mongodb_max_processes }}"
+  loop:
+    - soft
+    - hard
+  become: yes
+
+- name: 部署 MongoDB 配置文件
+  template:
+    src: mongod.conf.j2
+    dest: "{{ mongodb_config_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify: restart mongod
+
+- name: 启动并启用 MongoDB 服务
+  systemd:
+    name: mongod
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: 等待 MongoDB 启动
+  wait_for:
+    port: "{{ mongodb_port }}"
+    delay: 5
+    timeout: 60
+
+- name: 检查 MongoDB 是否已初始化管理员用户
+  shell: |
+    mongosh --quiet --eval "db.adminCommand('listDatabases')" 2>&1 || true
+  register: mongodb_init_check
+  changed_when: false
+  become: yes
+  when: mongodb_auth_enabled
+
+- name: 创建 MongoDB root 用户
+  shell: |
+    mongosh admin --eval "
+    db.createUser({
+      user: '{{ mongodb_root_username }}',
+      pwd: '{{ mongodb_root_password }}',
+      roles: [ { role: 'root', db: 'admin' } ]
+    })
+    "
+  become: yes
+  when: 
+    - mongodb_auth_enabled
+    - "'MongoServerError' in mongodb_init_check.stderr or 'command listDatabases requires authentication' not in mongodb_init_check.stderr"
+  no_log: true
+  ignore_errors: yes
+
+- name: 重启 MongoDB 以启用认证
+  systemd:
+    name: mongod
+    state: restarted
+  become: yes
+  when: mongodb_auth_enabled
+
+- name: 等待 MongoDB 重启完成
+  wait_for:
+    port: "{{ mongodb_port }}"
+    delay: 5
+    timeout: 60
+  when: mongodb_auth_enabled
+
+- name: 创建应用数据库用户
+  shell: |
+    mongosh -u {{ mongodb_root_username }} -p '{{ mongodb_root_password }}' --authenticationDatabase admin {{ item.database }} --eval "
+    db.createUser({
+      user: '{{ item.name }}',
+      pwd: '{{ item.password }}',
+      roles: [ { role: '{{ item.roles }}', db: '{{ item.database }}' } ]
+    })
+    "
+  become: yes
+  loop: "{{ mongodb_users }}"
+  when: 
+    - mongodb_auth_enabled
+    - mongodb_users | length > 0
+  no_log: true
+  ignore_errors: yes
+
+- name: 获取 MongoDB 版本信息
+  shell: mongod --version | head -n 1
+  register: mongodb_version_output
+  changed_when: false
+  become: yes
+
+- name: 显示 MongoDB 版本
+  debug:
+    msg: "MongoDB 安装成功！版本：{{ mongodb_version_output.stdout }}"
+
+- name: 获取 MongoDB 服务状态
+  systemd:
+    name: mongod
+  register: mongod_status
+  become: yes
+
+- name: 显示安装完成信息
+  debug:
+    msg:
+      - "========================================"
+      - "MongoDB 安装完成！"
+      - "========================================"
+      - "版本: {{ mongodb_version_output.stdout }}"
+      - "端口: {{ mongodb_port }}"
+      - "绑定地址: {{ mongodb_bind_ip }}"
+      - "数据目录: {{ mongodb_data_dir }}"
+      - "日志目录: {{ mongodb_log_dir }}"
+      - "认证启用: {{ mongodb_auth_enabled }}"
+      - "服务状态: {{ mongod_status.status.ActiveState }}"
+      - "========================================"

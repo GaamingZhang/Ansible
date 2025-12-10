@@ -1,0 +1,33 @@
+---
+# 安装 CNI 网络插件 (Calico, Ubuntu专用)
+
+- name: 下载 Calico manifest
+  get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml"
+    dest: /tmp/calico.yaml
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
+
+- name: 修改 Calico Pod CIDR
+  replace:
+    path: /tmp/calico.yaml
+    regexp: '# - name: CALICO_IPV4POOL_CIDR\n\s+#   value: "192.168.0.0/16"'
+    replace: '- name: CALICO_IPV4POOL_CIDR\n              value: "{{ kubernetes_pod_network_cidr }}"'
+
+- name: 应用 Calico manifest
+  shell: kubectl apply -f /tmp/calico.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_apply
+  changed_when: "'created' in calico_apply.stdout or 'configured' in calico_apply.stdout"
+
+- name: 等待 Calico pods 就绪
+  shell: kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers | grep -v Running | wc -l
+  register: calico_pending
+  until: calico_pending.stdout == "0"
+  retries: 60
+  delay: 10
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf

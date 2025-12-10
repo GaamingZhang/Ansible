@@ -1,0 +1,38 @@
+# Logs
+logs/
+*.log
+
+# Ansible
+*.retry
+.vault_pass
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Sensitive data
+*_password.txt
+secrets/
+*.key
+*.pem

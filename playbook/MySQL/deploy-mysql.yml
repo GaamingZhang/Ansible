@@ -1,0 +1,29 @@
+---
+- name: 安装 MySQL
+  hosts: mysql_cluster
+  become: yes
+  vars:
+    mysql_root_password: ""
+    mysql_bind_address: "0.0.0.0"
+    mysql_max_connections: 500
+    mysql_innodb_buffer_pool_size: "1G"
+  roles:
+    - install-mysql
+  
+  post_tasks:
+    - name: 显示 MySQL 连接信息
+      debug:
+        msg:
+          - "=========================================="
+          - "MySQL 安装完成！"
+          - "=========================================="
+          - "服务器地址: {{ ansible_host }}"
+          - "端口: 3306"
+          - "Root 密码: 无需密码"
+          - "=========================================="
+          - "连接命令示例:"
+          - "  mysql -h {{ ansible_host }} -u root"
+          - "  或: mysql (本地直接登录)"
+          - "=========================================="
+          - "注意: 无密码模式，请确保网络安全"
+          - "=========================================="

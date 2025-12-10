@@ -1,0 +1,10 @@
+---
+# ElasticSearch 服务处理器
+
+- name: restart elasticsearch
+  systemd:
+    name: elasticsearch
+    state: restarted
+    daemon_reload: yes
+  tags:
+    - elasticsearch

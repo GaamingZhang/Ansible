@@ -1,0 +1,90 @@
+---
+# 初始化第一个主节点
+
+- name: 检查集群是否已初始化
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_initialized
+
+- name: 创建 kubeadm 配置文件
+  template:
+    src: kubeadm-config.yaml.j2
+    dest: /tmp/kubeadm-config.yaml
+  when: not kubernetes_initialized.stat.exists
+
+- name: 初始化 Kubernetes 集群
+  shell: |
+    kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs
+  environment:
+    HTTP_PROXY: "{{ http_proxy }}"
+    HTTPS_PROXY: "{{ https_proxy }}"
+    NO_PROXY: "{{ no_proxy }}"
+  when: not kubernetes_initialized.stat.exists
+  register: kubeadm_init
+
+- name: 保存初始化输出
+  copy:
+    content: "{{ kubeadm_init.stdout }}"
+    dest: /home/node/kubeadm-init-output.txt
+  when: kubeadm_init.changed
+
+- name: 创建 .kube 目录
+  file:
+    path: /home/node/.kube
+    state: directory
+    mode: '0755'
+    owner: node
+    group: node
+
+- name: 复制 kubeconfig
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/node/.kube/config
+    owner: node
+    group: node
+    remote_src: yes
+    mode: '0600'
+
+- name: 获取 join 命令 (master)
+  shell: kubeadm token create --print-join-command --certificate-key $(kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -1)
+  register: master_join_command
+  when: not kubernetes_initialized.stat.exists
+
+- name: 获取 join 命令 (worker)
+  shell: kubeadm token create --print-join-command
+  register: worker_join_command
+  when: not kubernetes_initialized.stat.exists
+
+- name: 保存 master join 命令
+  copy:
+    content: "{{ master_join_command.stdout }}"
+    dest: /home/node/master-join-command.sh
+    owner: node
+    group: node
+  when: master_join_command is defined and master_join_command.changed
+
+- name: 保存 worker join 命令
+  copy:
+    content: "{{ worker_join_command.stdout }}"
+    dest: /home/node/worker-join-command.sh
+    owner: node
+    group: node
+  when: worker_join_command is defined and worker_join_command.changed
+
+- name: 获取 join 命令到本地
+  fetch:
+    src: "{{ item }}"
+    dest: "/tmp/{{ item | basename }}"
+    flat: yes
+  loop:
+    - /home/node/master-join-command.sh
+    - /home/node/worker-join-command.sh
+  when: not kubernetes_initialized.stat.exists
+
+- name: 等待所有 kube-system pods 就绪
+  shell: kubectl get pods -n kube-system --no-headers | grep -v Running | grep -v Completed | wc -l
+  register: pending_pods
+  until: pending_pods.stdout == "0"
+  retries: 30
+  delay: 10
+  changed_when: false

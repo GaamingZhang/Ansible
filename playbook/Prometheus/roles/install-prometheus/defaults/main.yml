@@ -1,0 +1,96 @@
+---
+# Prometheus 安装配置变量
+
+# Prometheus 版本
+prometheus_version: "3.8.0"  # 最新稳定版本 (2025-12-09)
+prometheus_download_url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+
+# Node Exporter 版本
+node_exporter_version: "1.10.2"  # 最新稳定版本 (2025-12-09)
+node_exporter_download_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+
+# Alertmanager 版本（可选）
+alertmanager_version: "0.29.0"
+alertmanager_download_url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-amd64.tar.gz"
+
+# 安装目录
+prometheus_install_dir: "/opt/prometheus"
+prometheus_config_dir: "/etc/prometheus"
+prometheus_data_dir: "/var/lib/prometheus"
+prometheus_log_dir: "/var/log/prometheus"
+
+# Prometheus 用户和组
+prometheus_user: "prometheus"
+prometheus_group: "prometheus"
+
+# Prometheus 端口
+prometheus_port: 9090
+prometheus_listen_address: "0.0.0.0"
+
+# Node Exporter 端口
+node_exporter_port: 9100
+
+# Alertmanager 端口（如果安装）
+alertmanager_port: 9093
+
+# 数据保留时间
+prometheus_retention_time: "15d"
+prometheus_retention_size: "50GB"
+
+# 抓取间隔
+prometheus_scrape_interval: "15s"
+prometheus_evaluation_interval: "15s"
+
+# 代理配置（如果需要）
+# http_proxy: "http://192.168.31.132:20171"
+# https_proxy: "http://192.168.31.132:20171"
+# no_proxy: "localhost,127.0.0.1,192.168.31.0/24"
+
+# 是否安装 Node Exporter
+install_node_exporter: true
+
+# 是否安装 Alertmanager
+install_alertmanager: false
+
+# 监控目标（示例）
+prometheus_scrape_targets:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+  
+  - job_name: 'node_exporter'
+    static_configs:
+      # Kubernetes Masters
+      - targets:
+          - '192.168.31.30:9100'
+          - '192.168.31.31:9100'
+        labels:
+          group: 'kubernetes_masters'
+      # Kubernetes Workers
+      - targets:
+          - '192.168.31.40:9100'
+          - '192.168.31.41:9100'
+          - '192.168.31.42:9100'
+          - '192.168.31.43:9100'
+        labels:
+          group: 'kubernetes_workers'
+      # GitLab
+      - targets:
+          - '192.168.31.50:9100'
+        labels:
+          group: 'gitlab'
+      # Grafana
+      - targets:
+          - '192.168.31.60:9100'
+        labels:
+          group: 'grafana'
+      # Jenkins
+      - targets:
+          - '192.168.31.70:9100'
+        labels:
+          group: 'jenkins'
+      # Prometheus
+      - targets:
+          - '192.168.31.80:9100'
+        labels:
+          group: 'prometheus'

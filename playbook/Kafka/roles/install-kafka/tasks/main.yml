@@ -1,0 +1,162 @@
+---
+- name: 安装 Java (Kafka 依赖)
+  apt:
+    name: openjdk-17-jre-headless
+    state: present
+    update_cache: yes
+  environment:
+    http_proxy: "{{ lookup('env', 'http_proxy') | default('', true) }}"
+    https_proxy: "{{ lookup('env', 'https_proxy') | default('', true) }}"
+
+- name: 创建 Kafka 用户组
+  group:
+    name: kafka
+    state: present
+
+- name: 创建 Kafka 用户
+  user:
+    name: kafka
+    group: kafka
+    shell: /bin/bash
+    home: /home/kafka
+    createhome: yes
+    state: present
+
+- name: 创建 Kafka 目录
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: '0755'
+  loop:
+    - "{{ kafka_install_dir }}"
+    - "{{ kafka_data_dir }}"
+    - "{{ kafka_log_dir }}"
+    - "{{ kafka_zookeeper_data_dir }}"
+
+- name: 检查 Kafka 是否已安装
+  stat:
+    path: "{{ kafka_install_dir }}/bin/kafka-server-start.sh"
+  register: kafka_installed
+
+- name: 下载 Kafka
+  get_url:
+    url: "{{ kafka_download_url }}"
+    dest: "/tmp/{{ kafka_package }}.tgz"
+    mode: '0644'
+    timeout: 300
+  environment:
+    http_proxy: "{{ lookup('env', 'http_proxy') | default('', true) }}"
+    https_proxy: "{{ lookup('env', 'https_proxy') | default('', true) }}"
+  when: not kafka_installed.stat.exists
+  register: kafka_download
+  failed_when: false
+
+- name: 尝试从镜像下载 Kafka（如果主站失败）
+  get_url:
+    url: "{{ kafka_mirror_url }}"
+    dest: "/tmp/{{ kafka_package }}.tgz"
+    mode: '0644'
+    timeout: 300
+  environment:
+    http_proxy: "{{ lookup('env', 'http_proxy') | default('', true) }}"
+    https_proxy: "{{ lookup('env', 'https_proxy') | default('', true) }}"
+  when: not kafka_installed.stat.exists and kafka_download.failed
+
+- name: 解压 Kafka
+  unarchive:
+    src: "/tmp/{{ kafka_package }}.tgz"
+    dest: "/tmp"
+    remote_src: yes
+    owner: kafka
+    group: kafka
+  when: not kafka_installed.stat.exists
+
+- name: 复制 Kafka 文件到安装目录
+  shell: |
+    cp -r /tmp/{{ kafka_package }}/* {{ kafka_install_dir }}/
+    chown -R kafka:kafka {{ kafka_install_dir }}
+  when: not kafka_installed.stat.exists
+
+- name: 部署 ZooKeeper 配置文件
+  template:
+    src: zookeeper.properties.j2
+    dest: "{{ kafka_install_dir }}/config/zookeeper.properties"
+    owner: kafka
+    group: kafka
+    mode: '0644'
+  notify: restart zookeeper
+
+- name: 部署 Kafka Server 配置文件
+  template:
+    src: server.properties.j2
+    dest: "{{ kafka_install_dir }}/config/server.properties"
+    owner: kafka
+    group: kafka
+    mode: '0644'
+  notify: restart kafka
+
+- name: 创建 ZooKeeper systemd 服务
+  template:
+    src: zookeeper.service.j2
+    dest: /etc/systemd/system/zookeeper.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart zookeeper
+
+- name: 创建 Kafka systemd 服务
+  template:
+    src: kafka.service.j2
+    dest: /etc/systemd/system/kafka.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart kafka
+
+- name: 重载 systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动并启用 ZooKeeper 服务
+  systemd:
+    name: zookeeper
+    state: started
+    enabled: yes
+
+- name: 等待 ZooKeeper 启动
+  wait_for:
+    port: "{{ kafka_zookeeper_port }}"
+    delay: 5
+    timeout: 60
+
+- name: 启动并启用 Kafka 服务
+  systemd:
+    name: kafka
+    state: started
+    enabled: yes
+
+- name: 等待 Kafka 启动
+  wait_for:
+    port: "{{ kafka_port }}"
+    delay: 10
+    timeout: 120
+
+- name: 清理临时文件
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/{{ kafka_package }}.tgz"
+    - "/tmp/{{ kafka_package }}"
+
+- name: 获取 Kafka 版本
+  shell: "{{ kafka_install_dir }}/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:{{ kafka_port }} | head -1"
+  register: kafka_version_output
+  changed_when: false
+  failed_when: false
+
+- name: 显示 Kafka 版本
+  debug:
+    msg: "Kafka 安装完成: {{ kafka_version }}"

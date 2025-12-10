@@ -1,0 +1,141 @@
+---
+# 安装 Jenkins
+
+- name: 更新 apt 缓存
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: 安装依赖包
+  apt:
+    name:
+      - curl
+      - gnupg2
+      - ca-certificates
+      - apt-transport-https
+      - software-properties-common
+      - fontconfig
+    state: present
+  become: yes
+
+- name: 安装 Java
+  apt:
+    name: "{{ java_version }}"
+    state: present
+  become: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 添加 Jenkins GPG 密钥
+  shell: |
+    curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+  args:
+    creates: /usr/share/keyrings/jenkins-keyring.asc
+  become: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 添加 Jenkins APT 仓库
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+    state: present
+    filename: jenkins
+  become: yes
+
+- name: 更新 apt 缓存（Jenkins 仓库）
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: 安装 Jenkins
+  apt:
+    name: jenkins={{ jenkins_version }}
+    state: present
+    allow_downgrade: yes
+  become: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+  register: jenkins_installed
+
+- name: 配置 Jenkins 默认参数
+  template:
+    src: jenkins-defaults.j2
+    dest: /etc/default/jenkins
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  register: jenkins_config
+  when: jenkins_installed is defined
+
+- name: 创建 systemd override 目录
+  file:
+    path: /etc/systemd/system/jenkins.service.d
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: 配置 Jenkins systemd service
+  template:
+    src: jenkins-service-override.conf.j2
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  register: jenkins_systemd_config
+
+- name: 重新加载 systemd
+  systemd:
+    daemon_reload: yes
+  become: yes
+  when: jenkins_systemd_config.changed
+
+- name: 确保 Jenkins 服务启动并开机自启
+  systemd:
+    name: jenkins
+    state: started
+    enabled: yes
+  become: yes
+  register: jenkins_service
+
+- name: 重启 Jenkins（如果配置改变）
+  systemd:
+    name: jenkins
+    state: restarted
+  become: yes
+  when: jenkins_config.changed or jenkins_systemd_config.changed
+
+- name: 等待 Jenkins 启动
+  uri:
+    url: "http://localhost:{{ jenkins_http_port }}"
+    status_code: 200,403
+    timeout: 5
+  register: jenkins_health
+  until: jenkins_health.status in [200, 403]
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: 显示 Jenkins 访问信息
+  debug:
+    msg:
+      - "========================================"
+      - "Jenkins 安装成功!"
+      - "========================================"
+      - "访问地址: http://{{ ansible_host }}:{{ jenkins_http_port }}"
+      - "初始管理员密码: 请登录服务器查看"
+      - "  命令: sudo cat {{ jenkins_home }}/secrets/initialAdminPassword"
+      - "========================================"
+      - "注意："
+      - "1. 首次访问需要使用初始管理员密码解锁"
+      - "2. 建议安装推荐的插件"
+      - "3. 创建第一个管理员用户后密码文件将被删除"
+      - "4. Jenkins 主目录: {{ jenkins_home }}"
+      - "========================================"
+      - "========================================"
+      - "服务状态: {{ jenkins_status.status.ActiveState }}"

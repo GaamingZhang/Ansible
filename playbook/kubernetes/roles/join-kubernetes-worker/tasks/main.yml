@@ -1,0 +1,23 @@
+---
+# 加入工作节点
+
+- name: 复制 worker join 命令
+  copy:
+    src: /tmp/worker-join-command.sh
+    dest: /home/node/worker-join-command.sh
+    mode: '0755'
+    owner: node
+    group: node
+
+- name: 检查节点是否已加入集群
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: node_joined
+
+- name: 执行 join 命令
+  shell: bash /home/node/worker-join-command.sh
+  environment:
+    HTTP_PROXY: "{{ http_proxy }}"
+    HTTPS_PROXY: "{{ https_proxy }}"
+    NO_PROXY: "{{ no_proxy }}"
+  when: not node_joined.stat.exists

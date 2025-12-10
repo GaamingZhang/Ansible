@@ -1,0 +1,26 @@
+# ZooKeeper 配置文件
+# 数据目录
+dataDir={{ kafka_zookeeper_data_dir }}
+
+# 客户端端口
+clientPort={{ kafka_zookeeper_port }}
+
+# 最大客户端连接数
+maxClientCnxns=0
+
+# 管理端口
+admin.enableServer=true
+admin.serverPort=8080
+
+# 快照保留数量
+autopurge.snapRetainCount=3
+autopurge.purgeInterval=24
+
+# Tick 时间（毫秒）
+tickTime=2000
+
+# 初始化同步时间限制
+initLimit=10
+
+# 同步时间限制
+syncLimit=5

@@ -1,0 +1,43 @@
+[mysqld]
+# 基本设置
+bind-address = {{ mysql_bind_address }}
+port = {{ mysql_port }}
+datadir = {{ mysql_datadir }}
+
+# 连接设置
+max_connections = {{ mysql_max_connections }}
+max_allowed_packet = 256M
+connect_timeout = 10
+
+# InnoDB 设置
+innodb_buffer_pool_size = {{ mysql_innodb_buffer_pool_size }}
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT
+
+# 字符集设置
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# 日志设置
+log_error = {{ mysql_log_error }}
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+
+# 二进制日志（用于复制和备份）
+server-id = 1
+log_bin = /var/log/mysql/mysql-bin.log
+binlog_expire_logs_seconds = 604800
+max_binlog_size = 100M
+
+# 性能优化
+table_open_cache = 4000
+tmp_table_size = 64M
+max_heap_table_size = 64M
+
+[client]
+port = {{ mysql_port }}
+default-character-set = utf8mb4
+
+[mysql]
+default-character-set = utf8mb4
