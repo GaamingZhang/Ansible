@@ -1,0 +1,118 @@
+---
+# 准备 GitLab 安装环境
+
+- name: 更新 apt 缓存
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: 安装依赖包
+  apt:
+    name:
+      - curl
+      - openssh-server
+      - ca-certificates
+      - tzdata
+      - perl
+      - postfix
+    state: present
+  become: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: 配置时区
+  timezone:
+    name: Asia/Shanghai
+  become: yes
+
+- name: 确保 postfix 服务运行
+  systemd:
+    name: postfix
+    state: started
+    enabled: yes
+  become: yes
+
+- name: 添加 GitLab GPG 密钥
+  shell: |
+    curl -fsSL https://packages.gitlab.com/gitlab/gitlab-ce/gpgkey | gpg --dearmor -o /usr/share/keyrings/gitlab-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/gitlab-archive-keyring.gpg
+  become: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 添加 GitLab APT 仓库
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/gitlab-archive-keyring.gpg] https://packages.gitlab.com/gitlab/gitlab-ce/ubuntu/ {{ ansible_distribution_release }} main"
+    state: present
+    filename: gitlab-ce
+  become: yes
+
+- name: 设置 GitLab 外部 URL
+  set_fact:
+    gitlab_external_url_env: "EXTERNAL_URL='{{ gitlab_external_url }}'"
+
+- name: 安装 GitLab CE
+  apt:
+    name: gitlab-ce={{ gitlab_version }}
+    state: present
+    update_cache: yes
+  become: yes
+  environment:
+    EXTERNAL_URL: "{{ gitlab_external_url }}"
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+  register: gitlab_installed
+
+- name: 等待 GitLab 安装完成
+  pause:
+    seconds: 10
+  when: gitlab_installed.changed
+
+- name: 配置 GitLab
+  template:
+    src: gitlab.rb.j2
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: '0600'
+  become: yes
+  register: gitlab_config
+
+- name: 重新配置 GitLab
+  shell: gitlab-ctl reconfigure
+  become: yes
+  when: gitlab_config.changed
+  register: gitlab_reconfigure
+  async: 600
+  poll: 10
+
+- name: 等待 GitLab 服务就绪
+  uri:
+    url: "{{ gitlab_external_url }}"
+    status_code: 200,302
+    validate_certs: no
+  register: gitlab_health
+  until: gitlab_health.status in [200, 302]
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: 显示 GitLab 访问信息
+  debug:
+    msg:
+      - "========================================"
+      - "GitLab 安装成功!"
+      - "========================================"
+      - "访问地址: {{ gitlab_external_url }}"
+      - "用户名: root"
+      - "初始密码: 请登录服务器查看 /etc/gitlab/initial_root_password"
+      - "========================================"
+      - "注意："
+      - "1. 初始密码文件将在 24 小时后自动删除"
+      - "2. 首次登录后请立即修改密码"
+      - "3. SSH 克隆地址: git@{{ ansible_host }}:username/project.git"
+      - "4. 获取密码: sudo cat /etc/gitlab/initial_root_password"
+      - "========================================"

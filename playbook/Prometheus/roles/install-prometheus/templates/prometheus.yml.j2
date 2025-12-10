@@ -1,0 +1,66 @@
+# Prometheus 全局配置
+global:
+  scrape_interval: {{ prometheus_scrape_interval }}
+  evaluation_interval: {{ prometheus_evaluation_interval }}
+  external_labels:
+    cluster: 'devops-cluster'
+    replica: '{{ ansible_hostname }}'
+
+# Alertmanager 配置
+alerting:
+  alertmanagers:
+{% if install_alertmanager %}
+    - static_configs:
+        - targets:
+            - localhost:{{ alertmanager_port }}
+{% else %}
+    - static_configs:
+        - targets: []
+{% endif %}
+
+# 规则文件
+rule_files:
+  - "{{ prometheus_config_dir }}/rules/*.yml"
+
+# 抓取配置
+scrape_configs:
+{% for target in prometheus_scrape_targets %}
+  - job_name: '{{ target.job_name }}'
+{% if target.scrape_interval is defined %}
+    scrape_interval: {{ target.scrape_interval }}
+{% endif %}
+{% if target.scrape_timeout is defined %}
+    scrape_timeout: {{ target.scrape_timeout }}
+{% endif %}
+{% if target.metrics_path is defined %}
+    metrics_path: {{ target.metrics_path }}
+{% endif %}
+{% if target.static_configs is defined %}
+    static_configs:
+{% for config in target.static_configs %}
+      - targets:
+{% for tgt in config.targets %}
+          - '{{ tgt }}'
+{% endfor %}
+{% if config.labels is defined %}
+        labels:
+{% for key, value in config.labels.items() %}
+          {{ key }}: '{{ value }}'
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if target.file_sd_configs is defined %}
+    file_sd_configs:
+{% for config in target.file_sd_configs %}
+      - files:
+{% for file in config.files %}
+          - '{{ file }}'
+{% endfor %}
+{% if config.refresh_interval is defined %}
+        refresh_interval: {{ config.refresh_interval }}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% endfor %}

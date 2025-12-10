@@ -1,0 +1,100 @@
+---
+- name: 安装 Redis 集群
+  hosts: redis_cluster
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  
+  roles:
+    - install-redis-cluster
+  
+  tasks:
+    - name: 收集所有 Redis 节点信息
+      set_fact:
+        redis_nodes: "{{ groups['redis_cluster'] | map('extract', hostvars, 'ansible_host') | list }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: 显示集群节点信息
+      debug:
+        msg:
+          - "========================================"
+          - "Redis 节点安装完成！"
+          - "========================================"
+          - "集群节点："
+          - "{% for host in groups['redis_cluster'] %}  - {{ hostvars[host]['ansible_host'] }}:{{ redis_port }}{% endfor %}"
+          - "========================================"
+          - "下一步：创建集群"
+          - "========================================"
+      run_once: true
+
+- name: 创建 Redis 集群
+  hosts: redis_cluster[0]
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  vars:
+    redis_port: 6379
+    redis_password: ""  # 不使用密码
+    redis_cluster_replicas: 0  # 3个节点时设置为0，即3个主节点，无副本
+    redis_install_dir: "/opt/redis"
+  
+  tasks:
+    - name: 等待所有节点就绪
+      pause:
+        seconds: 5
+
+    - name: 构建集群节点列表
+      set_fact:
+        cluster_nodes: "{{ groups['redis_cluster'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.*)$', '\\1:' + redis_port|string) | join(' ') }}"
+
+    - name: 创建 Redis 集群
+      shell: |
+        {{ redis_install_dir }}/bin/redis-cli --cluster create \
+          {{ cluster_nodes }} \
+          --cluster-replicas {{ redis_cluster_replicas }} \
+          --cluster-yes
+      register: cluster_create
+      changed_when: "'OK' in cluster_create.stdout"
+      failed_when: 
+        - cluster_create.rc != 0
+        - "'ERR This instance has cluster support disabled' not in cluster_create.stderr"
+
+    - name: 显示集群创建结果
+      debug:
+        var: cluster_create.stdout_lines
+
+    - name: 验证集群状态
+      command: "{{ redis_install_dir }}/bin/redis-cli cluster info"
+      register: cluster_info
+      changed_when: false
+
+    - name: 显示集群信息
+      debug:
+        var: cluster_info.stdout_lines
+
+    - name: 验证集群节点
+      command: "{{ redis_install_dir }}/bin/redis-cli cluster nodes"
+      register: cluster_nodes_info
+      changed_when: false
+
+    - name: 显示集群节点信息
+      debug:
+        var: cluster_nodes_info.stdout_lines
+
+    - name: 显示最终信息
+      debug:
+        msg:
+          - "========================================"
+          - "Redis 集群创建完成！"
+          - "========================================"
+          - "集群模式: 3个主节点（无副本）"
+          - "无需密码认证"
+          - "========================================"
+          - "连接示例："
+          - "  redis-cli -c -h {{ hostvars[groups['redis_cluster'][0]]['ansible_host'] }} -p {{ redis_port }}"
+          - "========================================"
+          - "验证命令："
+          - "  cluster info"
+          - "  cluster nodes"
+          - "========================================"

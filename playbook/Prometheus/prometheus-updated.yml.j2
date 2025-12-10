@@ -1,0 +1,201 @@
+# Prometheus 全局配置
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'devops-cluster'
+    prometheus_instance: '{{ ansible_hostname }}'
+
+# Alertmanager 配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# 规则文件
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# 抓取配置
+scrape_configs:
+  # Prometheus 自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'prometheus-server'
+          group: 'prometheus'
+
+  # Kubernetes Master 节点监控
+  - job_name: 'kubernetes_masters'
+    static_configs:
+      - targets:
+          - '192.168.31.30:9100'
+          - '192.168.31.31:9100'
+        labels:
+          cluster: 'kubernetes'
+          role: 'master'
+          group: 'kubernetes_masters'
+
+  # Kubernetes Worker 节点监控
+  - job_name: 'kubernetes_workers'
+    static_configs:
+      - targets:
+          - '192.168.31.40:9100'
+          - '192.168.31.41:9100'
+          - '192.168.31.42:9100'
+          - '192.168.31.43:9100'
+        labels:
+          cluster: 'kubernetes'
+          role: 'worker'
+          group: 'kubernetes_workers'
+
+  # GitLab 服务器监控
+  - job_name: 'gitlab'
+    static_configs:
+      - targets:
+          - '192.168.31.50:9100'
+        labels:
+          service: 'gitlab'
+          group: 'gitlab_cluster'
+
+  # Grafana 服务器监控
+  - job_name: 'grafana'
+    static_configs:
+      - targets:
+          - '192.168.31.60:9100'
+        labels:
+          service: 'grafana'
+          group: 'grafana_cluster'
+
+  # Jenkins 服务器监控
+  - job_name: 'jenkins'
+    static_configs:
+      - targets:
+          - '192.168.31.70:9100'
+        labels:
+          service: 'jenkins'
+          group: 'jenkins_cluster'
+
+  # Prometheus 服务器监控
+  - job_name: 'prometheus_server'
+    static_configs:
+      - targets:
+          - '192.168.31.80:9100'
+        labels:
+          service: 'prometheus'
+          group: 'prometheus_cluster'
+
+  # Redis 集群监控
+  - job_name: 'redis_cluster'
+    static_configs:
+      - targets:
+          - '192.168.31.90:9100'
+          - '192.168.31.91:9100'
+          - '192.168.31.92:9100'
+        labels:
+          service: 'redis'
+          group: 'redis_cluster'
+
+  # MySQL 服务器监控
+  - job_name: 'mysql'
+    static_configs:
+      - targets:
+          - '192.168.31.110:9100'
+        labels:
+          service: 'mysql'
+          group: 'mysql_cluster'
+
+  # Kafka 服务器监控
+  - job_name: 'kafka'
+    static_configs:
+      - targets:
+          - '192.168.31.120:9100'
+        labels:
+          service: 'kafka'
+          group: 'kafka_cluster'
+
+  # RocketMQ 服务器监控
+  - job_name: 'rocketmq'
+    static_configs:
+      - targets:
+          - '192.168.31.130:9100'
+        labels:
+          service: 'rocketmq'
+          group: 'rocketmq_cluster'
+
+  # MongoDB 服务器监控
+  - job_name: 'mongodb'
+    static_configs:
+      - targets:
+          - '192.168.31.140:9100'
+        labels:
+          service: 'mongodb'
+          group: 'mongodb_cluster'
+
+  # ElasticSearch 服务器监控
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets:
+          - '192.168.31.150:9100'
+        labels:
+          service: 'elasticsearch'
+          group: 'elasticsearch_cluster'
+
+  # 所有节点的汇总视图
+  - job_name: 'all_nodes'
+    static_configs:
+      - targets:
+          - '192.168.31.30:9100'
+          - '192.168.31.31:9100'
+        labels:
+          node_type: 'k8s_master'
+      - targets:
+          - '192.168.31.40:9100'
+          - '192.168.31.41:9100'
+          - '192.168.31.42:9100'
+          - '192.168.31.43:9100'
+        labels:
+          node_type: 'k8s_worker'
+      - targets:
+          - '192.168.31.50:9100'
+        labels:
+          node_type: 'gitlab'
+      - targets:
+          - '192.168.31.60:9100'
+        labels:
+          node_type: 'grafana'
+      - targets:
+          - '192.168.31.70:9100'
+        labels:
+          node_type: 'jenkins'
+      - targets:
+          - '192.168.31.80:9100'
+        labels:
+          node_type: 'prometheus'
+      - targets:
+          - '192.168.31.90:9100'
+          - '192.168.31.91:9100'
+          - '192.168.31.92:9100'
+        labels:
+          node_type: 'redis'
+      - targets:
+          - '192.168.31.110:9100'
+        labels:
+          node_type: 'mysql'
+      - targets:
+          - '192.168.31.120:9100'
+        labels:
+          node_type: 'kafka'
+      - targets:
+          - '192.168.31.130:9100'
+        labels:
+          node_type: 'rocketmq'
+      - targets:
+          - '192.168.31.140:9100'
+        labels:
+          node_type: 'mongodb'
+      - targets:
+          - '192.168.31.150:9100'
+        labels:
+          node_type: 'elasticsearch'

@@ -1,0 +1,59 @@
+---
+- name: 升级 GitLab 到指定版本
+  hosts: gitLab_cluster
+  gather_facts: yes
+  become: yes
+  serial: 1  # 一次升级一台主机
+  
+  vars:
+    # 升级路径：18.0.x -> 18.2.x -> 18.5.x -> 18.6.1
+    gitlab_upgrade_versions:
+      - version: "18.2.5-ce.0"
+        description: "中间版本 18.2.5"
+      - version: "18.5.3-ce.0"
+        description: "中间版本 18.5.3"
+      - version: "18.6.1-ce.0"
+        description: "目标版本 18.6.1"
+    
+    gitlab_backup_before_upgrade: true
+    gitlab_external_url: "http://192.168.31.50"
+  
+  tasks:
+    - name: 检查当前 GitLab 版本
+      shell: gitlab-rake gitlab:env:info | grep "GitLab information" -A 10 | grep "GitLab:" | awk '{print $2}'
+      register: current_version
+      changed_when: false
+      ignore_errors: yes
+
+    - name: 显示当前版本
+      debug:
+        msg: "当前 GitLab 版本: {{ current_version.stdout | default('未安装') }}"
+
+    - name: 检查 GitLab 服务状态
+      shell: gitlab-ctl status
+      register: gitlab_status
+      changed_when: false
+      ignore_errors: yes
+
+    - name: 升级 GitLab (多步骤)
+      include_tasks: upgrade-step.yml
+      loop: "{{ gitlab_upgrade_versions }}"
+      loop_control:
+        loop_var: upgrade_step
+        label: "升级到 {{ upgrade_step.description }}"
+
+    - name: 验证最终版本
+      shell: gitlab-rake gitlab:env:info | grep "GitLab information" -A 10 | grep "GitLab:" | awk '{print $2}'
+      register: final_version
+      changed_when: false
+
+    - name: 显示升级完成信息
+      debug:
+        msg:
+          - "========================================"
+          - "GitLab 升级完成!"
+          - "========================================"
+          - "初始版本: {{ current_version.stdout | default('未知') }}"
+          - "当前版本: {{ final_version.stdout }}"
+          - "访问地址: {{ gitlab_external_url }}"
+          - "========================================"

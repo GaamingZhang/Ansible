@@ -1,0 +1,65 @@
+---
+- name: 更新 Prometheus 配置并重新加载
+  hosts: prometheus_cluster
+  become: yes
+  vars:
+    prometheus_config_dir: "/etc/prometheus"
+    prometheus_user: "prometheus"
+    prometheus_group: "prometheus"
+  
+  tasks:
+    - name: 更新 Prometheus 配置文件
+      template:
+        src: prometheus-updated.yml.j2
+        dest: "{{ prometheus_config_dir }}/prometheus.yml"
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        mode: '0644'
+        backup: yes
+      register: prometheus_config
+
+    - name: 验证配置文件
+      command: /opt/prometheus/promtool check config {{ prometheus_config_dir }}/prometheus.yml
+      register: config_check
+      changed_when: false
+
+    - name: 显示配置验证结果
+      debug:
+        msg: "{{ config_check.stdout_lines }}"
+
+    - name: 重新加载 Prometheus 配置
+      uri:
+        url: http://localhost:9090/-/reload
+        method: POST
+        status_code: 200
+      when: prometheus_config.changed
+
+    - name: 等待配置生效
+      pause:
+        seconds: 3
+      when: prometheus_config.changed
+
+    - name: 获取所有监控目标状态
+      uri:
+        url: http://localhost:9090/api/v1/targets
+        method: GET
+        return_content: yes
+      register: targets_status
+
+    - name: 显示配置更新信息
+      debug:
+        msg:
+          - "========================================"
+          - "Prometheus 配置已更新！"
+          - "========================================"
+          - "访问 Prometheus Web UI 查看所有目标："
+          - "http://192.168.31.80:9090/targets"
+          - "========================================"
+          - "监控的节点组："
+          - "  - Kubernetes Masters (2 nodes)"
+          - "  - Kubernetes Workers (4 nodes)"
+          - "  - GitLab (1 node)"
+          - "  - Grafana (1 node)"
+          - "  - Jenkins (1 node)"
+          - "  - Prometheus (1 node)"
+          - "========================================"

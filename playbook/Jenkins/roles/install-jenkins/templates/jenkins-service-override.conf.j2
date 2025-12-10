@@ -1,0 +1,18 @@
+[Service]
+# Jenkins systemd service override
+
+{% if http_proxy is defined and http_proxy != '' %}
+# 代理环境变量
+Environment="HTTP_PROXY={{ http_proxy }}"
+Environment="HTTPS_PROXY={{ https_proxy }}"
+Environment="NO_PROXY={{ no_proxy }}"
+Environment="http_proxy={{ http_proxy }}"
+Environment="https_proxy={{ https_proxy }}"
+Environment="no_proxy={{ no_proxy }}"
+{% endif %}
+
+# Java 选项
+Environment="JAVA_OPTS={{ jenkins_java_options }}"
+
+# Jenkins 参数
+Environment="JENKINS_PORT={{ jenkins_http_port }}"

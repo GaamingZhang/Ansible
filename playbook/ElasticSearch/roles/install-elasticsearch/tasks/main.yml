@@ -1,0 +1,193 @@
+---
+# ElasticSearch 安装任务
+
+- name: 更新 APT 缓存
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  tags:
+    - elasticsearch
+
+- name: 安装必要的依赖包
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+  tags:
+    - elasticsearch
+
+- name: 创建 APT 密钥目录
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  tags:
+    - elasticsearch
+
+- name: 下载 Elastic GPG 密钥
+  shell: |
+    curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor -o /etc/apt/keyrings/elasticsearch.gpg
+  args:
+    creates: /etc/apt/keyrings/elasticsearch.gpg
+  tags:
+    - elasticsearch
+
+- name: 添加 Elasticsearch APT 仓库
+  apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/elasticsearch.gpg] https://artifacts.elastic.co/packages/{{ elasticsearch_version }}/apt stable main"
+    state: present
+    filename: elasticsearch
+  tags:
+    - elasticsearch
+
+- name: 更新 APT 缓存（添加仓库后）
+  apt:
+    update_cache: yes
+  tags:
+    - elasticsearch
+
+- name: 安装 ElasticSearch
+  apt:
+    name: elasticsearch
+    state: present
+  tags:
+    - elasticsearch
+
+- name: 创建数据目录
+  file:
+    path: "{{ elasticsearch_data_dir }}"
+    state: directory
+    owner: "{{ elasticsearch_user }}"
+    group: "{{ elasticsearch_group }}"
+    mode: '0755'
+  tags:
+    - elasticsearch
+
+- name: 创建日志目录
+  file:
+    path: "{{ elasticsearch_log_dir }}"
+    state: directory
+    owner: "{{ elasticsearch_user }}"
+    group: "{{ elasticsearch_group }}"
+    mode: '0755'
+  tags:
+    - elasticsearch
+
+- name: 配置 JVM 选项
+  template:
+    src: jvm.options.j2
+    dest: /etc/elasticsearch/jvm.options.d/heap.options
+    owner: root
+    group: "{{ elasticsearch_group }}"
+    mode: '0660'
+  notify: restart elasticsearch
+  tags:
+    - elasticsearch
+
+- name: 配置 ElasticSearch
+  template:
+    src: elasticsearch.yml.j2
+    dest: /etc/elasticsearch/elasticsearch.yml
+    owner: root
+    group: "{{ elasticsearch_group }}"
+    mode: '0660'
+  notify: restart elasticsearch
+  tags:
+    - elasticsearch
+
+- name: 设置系统参数 - vm.max_map_count
+  sysctl:
+    name: vm.max_map_count
+    value: '262144'
+    state: present
+    reload: yes
+  tags:
+    - elasticsearch
+
+- name: 启用并启动 ElasticSearch 服务
+  systemd:
+    name: elasticsearch
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  tags:
+    - elasticsearch
+
+- name: 等待 ElasticSearch 启动
+  wait_for:
+    host: "{{ elasticsearch_network_host if elasticsearch_network_host != '0.0.0.0' else 'localhost' }}"
+    port: "{{ elasticsearch_http_port }}"
+    delay: 10
+    timeout: 300
+  tags:
+    - elasticsearch
+
+- name: 重置 elastic 用户密码
+  shell: |
+    /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -b -s
+  register: elastic_password
+  when: elasticsearch_enable_security | bool
+  changed_when: false
+  tags:
+    - elasticsearch
+
+- name: 保存 elastic 用户密码
+  copy:
+    content: "{{ elastic_password.stdout }}"
+    dest: /root/elasticsearch_elastic_password.txt
+    mode: '0600'
+  when: elasticsearch_enable_security | bool and elastic_password.stdout is defined
+  tags:
+    - elasticsearch
+
+- name: 获取 ElasticSearch 版本信息 (带认证)
+  uri:
+    url: "http://localhost:{{ elasticsearch_http_port }}"
+    method: GET
+    user: elastic
+    password: "{{ elastic_password.stdout }}"
+    force_basic_auth: yes
+    return_content: yes
+  register: es_version_info
+  when: elasticsearch_enable_security | bool and elastic_password.stdout is defined
+  changed_when: false
+  ignore_errors: yes
+  tags:
+    - elasticsearch
+
+- name: 获取 ElasticSearch 版本信息 (无认证)
+  uri:
+    url: "http://localhost:{{ elasticsearch_http_port }}"
+    method: GET
+    return_content: yes
+  register: es_version_info_no_auth
+  when: not (elasticsearch_enable_security | bool)
+  changed_when: false
+  tags:
+    - elasticsearch
+
+- name: 设置版本信息变量
+  set_fact:
+    final_es_version: "{{ (es_version_info.json.version.number if es_version_info.json is defined else (es_version_info_no_auth.json.version.number if es_version_info_no_auth.json is defined else 'N/A')) }}"
+  tags:
+    - elasticsearch
+
+- name: 显示 ElasticSearch 版本信息
+  debug:
+    msg: 
+      - "=========================================="
+      - "ElasticSearch 安装完成!"
+      - "=========================================="
+      - "版本: {{ final_es_version }}"
+      - "集群名称: {{ elasticsearch_cluster_name }}"
+      - "节点名称: {{ elasticsearch_node_name }}"
+      - "HTTP 端口: {{ elasticsearch_http_port }}"
+      - "传输端口: {{ elasticsearch_transport_port }}"
+      - "安全认证: {{ '已启用' if elasticsearch_enable_security else '已禁用 (无密码访问)' }}"
+      - "=========================================="
+  tags:
+    - elasticsearch

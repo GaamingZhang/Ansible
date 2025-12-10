@@ -1,0 +1,26 @@
+---
+# MongoDB 部署 Playbook
+
+- name: 部署 MongoDB 数据库
+  hosts: MongoDB_cluster
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - install-mongodb
+
+  post_tasks:
+    - name: 显示连接信息
+      debug:
+        msg:
+          - "========================================"
+          - "MongoDB 连接信息"
+          - "========================================"
+          - "主机: {{ ansible_host }}"
+          - "端口: {{ mongodb_port }}"
+          - "管理员用户: {{ mongodb_root_username }}"
+          - "连接字符串: mongodb://{{ mongodb_root_username }}:密码@{{ ansible_host }}:{{ mongodb_port }}/admin"
+          - ""
+          - "使用 mongosh 连接:"
+          - "  mongosh -u {{ mongodb_root_username }} -p --authenticationDatabase admin"
+          - "========================================"

@@ -1,93 +1,386 @@
-# Ansible
 
+# DevOps 基础设施自动化部署
 
+本项目使用 Ansible 自动化部署完整的 DevOps 基础设施，包括 Kubernetes 高可用集群、GitLab、Jenkins、Prometheus 监控、Grafana 可视化、Redis 集群和 MySQL 数据库。
 
-## Getting started
+## 基础设施架构
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### Ansible 控制节点
+- **控制节点**: 192.168.31.132
+- **HTTP 代理**: 192.168.31.132:20171
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### Kubernetes 高可用集群
+- **主节点**:
+  - KubernetesMaster000 (192.168.31.30)
+  - KubernetesMaster001 (192.168.31.31)
+- **工作节点**:
+  - KubernetesWorker000 (192.168.31.40)
+  - KubernetesWorker001 (192.168.31.41)
+  - KubernetesWorker002 (192.168.31.42)
+  - KubernetesWorker003 (192.168.31.43)
+- **高可用 VIP**: 192.168.31.100 (kube-vip v0.8.7)
+- **Kubernetes 版本**: v1.31.3
+- **容器运行时**: containerd
+- **CNI 插件**: Calico v3.29.1
 
-## Add your files
+### 应用服务
+- **GitLab CE**: 192.168.31.50 (v17.6.1)
+- **Jenkins LTS**: 192.168.31.70 (v2.528.2)
+- **Grafana Enterprise**: 192.168.31.60 (v12.3.0)
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+### 监控系统
+- **Prometheus**: 192.168.31.80 (v3.8.0)
+- **Node Exporter**: v1.10.2 (部署在所有 18 台虚拟机)
+- **监控目标**: 37 个 (18 个唯一节点 + 各类服务)
+- **监控面板**: Grafana 集成，显示节点名称和 IP
+
+### 数据存储
+- **Redis 集群**: 
+  - Redis000-002 (192.168.31.90-92)
+  - 版本: Redis 8.3.240 (stable)
+  - 模式: 3 主节点集群，无密码认证
+  
+- **MySQL**: 
+  - MySQL (192.168.31.110)
+  - 版本: MySQL 8.0
+  - 认证: 无密码登录
+  
+- **MongoDB**:
+  - MongoDB (192.168.31.140)
+  - 版本: MongoDB 8.0
+  
+- **ElasticSearch**:
+  - ElasticSearch (192.168.31.150)
+  - 版本: 8.19.8
+  - 认证: 无密码访问
+
+### 消息队列
+- **Kafka**: 192.168.31.120
+- **RocketMQ**: 192.168.31.130
+
+## 前置条件
+
+1. 所有虚拟机已安装 Ubuntu 24.04 操作系统
+2. Ansible 控制节点可以通过 SSH 免密登录所有节点
+3. 所有节点通过代理访问互联网 (http://192.168.31.132:20171)
+4. 各节点具有足够的资源：
+   - Kubernetes 节点: 至少 2 CPU, 4GB RAM
+   - GitLab: 至少 4GB RAM (推荐 8GB)
+   - Jenkins: 至少 2GB RAM (推荐 4GB)
+   - Prometheus/Grafana: 至少 2GB RAM
+   - Redis/MySQL: 至少 1GB RAM
+
+## SSH 密钥配置
+
+在控制节点上执行：
+
+```bash
+# 生成 SSH 密钥（如果没有）
+ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa
+
+# 复制密钥到所有节点
+for ip in 192.168.31.{30,31,40,41,42,43,50,60,70,80,90,91,92,110,120,130,140,150}; do
+  ssh-copy-id node@$ip
+done
+```
+
+## 快速部署
+
+### 1. Kubernetes 集群
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/kubernetes/deploy-k8s-cluster.yml
+```
+
+### 2. GitLab
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/GitLab/deploy-gitlab.yml
+```
+
+### 3. Jenkins
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/Jenkins/deploy-jenkins.yml
+```
+
+### 4. Prometheus 监控
+```bash
+# 部署 Prometheus
+ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml
+
+# 在所有节点部署 Node Exporter
+ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-node-exporter-all.yml
+
+# 更新 Prometheus 配置
+ansible-playbook -i inventory/hosts.ini playbook/Prometheus/update-prometheus-config.yml
+```
+
+### 5. Grafana
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/Grafana/deploy-grafana.yml
+```
+
+### 6. Redis 集群
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/Redis/deploy-redis-cluster.yml
+```
+
+### 7. MySQL
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/MySQL/deploy-mysql.yml
+```
+
+### 8. MongoDB
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/MongoDB/deploy-mongodb.yml
+```
+
+### 9. ElasticSearch
+```bash
+ansible-playbook -i inventory/hosts.ini playbook/ElasticSearch/deploy-elasticsearch.yml
+```
+
+## 服务访问信息
+
+### Kubernetes
+- API Server: https://192.168.31.100:6443
+- kubeconfig: 在主节点 `/etc/kubernetes/admin.conf`
+
+### GitLab
+- URL: http://192.168.31.50
+- 用户名: root
+- 初始密码: 登录服务器查看 `sudo cat /etc/gitlab/initial_root_password`
+
+### Jenkins
+- URL: http://192.168.31.70:8080
+- 初始密码: 登录服务器查看 `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`
+
+### Grafana
+- URL: http://192.168.31.60:3000
+- 默认用户名/密码: admin/admin
+- 仪表板: 所有节点监控概览 (18 个节点)
+
+### Prometheus
+- URL: http://192.168.31.80:9090
+- 监控目标: http://192.168.31.80:9090/targets
+
+### Redis 集群
+- 节点: 192.168.31.90-92:6379
+- 认证: 无需密码
+- 连接: `redis-cli -c -h 192.168.31.90`
+
+### MySQL
+- 主机: 192.168.31.110:3306
+- 用户: root
+- 密码: 无需密码
+- 连接: `mysql -h 192.168.31.110 -u root`
+
+### MongoDB
+- 主机: 192.168.31.140:27017
+- 连接: `mongosh mongodb://192.168.31.140:27017`
+
+### ElasticSearch
+- URL: http://192.168.31.150:9200
+- 认证: 无需密码
+- 健康检查: `curl http://192.168.31.150:9200/_cluster/health?pretty`
+
+## 详细文档
+
+- [Kubernetes 部署](playbook/kubernetes/README.md)
+- [GitLab 部署](playbook/GitLab/README.md)
+- [Jenkins 部署](playbook/Jenkins/README.md)
+- [Prometheus 监控](playbook/Prometheus/README.md)
+- [Grafana 可视化](playbook/Grafana/README.md)
+- [Redis 集群](playbook/Redis/README.md)
+- [MySQL 数据库](playbook/MySQL/README.md)
+- [MongoDB 数据库](playbook/MongoDB/README.md)
+- [ElasticSearch 搜索引擎](playbook/ElasticSearch/README.md)
+- [Redis 集群](playbook/Redis/README.md)
+- [MySQL 数据库](playbook/MySQL/README.md)
+
+## 验证部署
+
+### Kubernetes 集群验证
+```bash
+# 查看节点状态
+ansible kubernetes_first_master -i inventory/hosts.ini -m shell -a "kubectl get nodes -o wide"
+
+# 查看所有 pods
+ansible kubernetes_first_master -i inventory/hosts.ini -m shell -a "kubectl get pods -A"
+
+# 验证高可用 VIP
+ping 192.168.31.100
+curl -k https://192.168.31.100:6443/healthz
+```
+
+### 监控系统验证
+```bash
+# Prometheus 目标检查
+curl http://192.168.31.80:9090/api/v1/targets
+
+# Grafana 访问
+curl http://192.168.31.60:3000
+```
+
+### Redis 集群验证
+```bash
+ssh node@192.168.31.90 "/opt/redis/bin/redis-cli cluster info"
+```
+
+### MySQL 验证
+```bash
+ssh node@192.168.31.110 "mysql -u root -e 'SELECT VERSION();'"
+```
+
+## 重要配置说明
+
+### 网络接口配置
+
+如果您的虚拟机网络接口不是 `eth0`，需要修改：
+
+```bash
+# 在每个节点上查看网络接口名称
+ip addr show
+
+# 然后修改 group_vars/all.yml 中的配置
+kube_vip_interface: "ens33"  # 或其他接口名称
+```
+
+### 代理配置
+
+如果您的代理地址不同，修改以下文件：
+- `group_vars/all.yml`
+- `inventory/hosts.ini`
+
+### Kubernetes 版本
+
+在 `group_vars/all.yml` 中可以修改 Kubernetes 版本：
+
+```yaml
+kubernetes_version: "1.28.2"
+```
+
+## 常见问题处理
+
+### 1. 节点无法加入集群
+
+```bash
+# 在主节点重新生成 join 命令
+kubeadm token create --print-join-command
+
+# 对于主节点加入
+kubeadm token create --print-join-command --certificate-key $(kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -1)
+```
+
+### 2. kube-vip 未启动
+
+```bash
+# 检查 kube-vip pod
+kubectl get pods -n kube-system -l component=kube-vip
+
+# 查看日志
+kubectl logs -n kube-system <kube-vip-pod-name>
+
+# 验证网络接口配置
+ip addr show
+```
+
+### 3. containerd 问题
+
+```bash
+# 重启 containerd
+systemctl restart containerd
+
+# 查看日志
+journalctl -xeu containerd
+
+# 验证 containerd 配置
+crictl info
+```
+
+### 4. 清理集群并重新部署
+
+```bash
+# 在所有节点上执行
+ansible k8s_cluster -m shell -a "kubeadm reset -f"
+ansible k8s_cluster -m shell -a "rm -rf /etc/cni/net.d /etc/kubernetes /var/lib/etcd /var/lib/kubelet"
+ansible k8s_cluster -m shell -a "systemctl restart containerd"
+
+# 然后重新运行 playbook
+ansible-playbook playbook/deploy-k8s-cluster.yml
+```
+
+## 访问集群
+
+### 从控制节点访问
+
+```bash
+# 获取 kubeconfig
+scp node@192.168.31.30:/etc/kubernetes/admin.conf ~/.kube/config
+
+# 配置代理（如果需要）
+export HTTPS_PROXY=http://192.168.31.132:20171
+export NO_PROXY=192.168.31.0/24,10.96.0.0/12,10.244.0.0/16
+
+# 使用 kubectl
+kubectl get nodes
+kubectl get pods -A
+```
+
+## 后续操作
+
+### 安装 Kubernetes Dashboard
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+```
+
+### 安装 Helm
+
+```bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+
+### 配置 MetalLB 负载均衡器
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+```
+
+## 项目结构
 
 ```
-cd existing_repo
-git remote add origin http://192.168.31.50/gaamingzhang/ansible.git
-git branch -M main
-git push -uf origin main
+ansible/
+├── ansible.cfg                      # Ansible 配置文件
+├── inventory/
+│   └── hosts.ini                    # 主机清单
+├── group_vars/
+│   └── all.yml                      # 全局变量
+├── playbook/
+│   └── deploy-k8s-cluster.yml      # 主部署 playbook
+└── roles/
+    ├── system-prepare/              # 系统准备
+    │   └── tasks/main.yml
+    ├── install-containerd/          # 安装 containerd
+    │   ├── tasks/main.yml
+    │   └── handlers/main.yml
+    ├── install-kubernetes/          # 安装 Kubernetes
+    │   └── tasks/main.yml
+    ├── install-kube-vip/           # 安装 kube-vip
+    │   └── tasks/main.yml
+    ├── init-k8s-master/            # 初始化主节点
+    │   ├── tasks/main.yml
+    │   └── templates/kubeadm-config.yaml.j2
+    ├── join-k8s-master/            # 加入主节点
+    │   └── tasks/main.yml
+    ├── join-k8s-worker/            # 加入工作节点
+    │   └── tasks/main.yml
+    └── install-cni/                # 安装 CNI 插件
+        └── tasks/main.yml
 ```
 
-## Integrate with your tools
+## 支持
 
-- [ ] [Set up project integrations](http://192.168.31.50/gaamingzhang/ansible/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+如有问题,请检查:
+1. Ansible 执行日志
+2. `/var/log/syslog` 或 `/var/log/messages`
+3. `journalctl -xeu kubelet`
+4. `kubectl logs` 查看 pod 日志

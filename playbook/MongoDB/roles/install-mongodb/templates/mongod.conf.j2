@@ -1,0 +1,33 @@
+# mongod.conf
+# MongoDB 配置文件
+
+# 存储配置
+storage:
+  dbPath: {{ mongodb_data_dir }}
+
+# 日志配置
+systemLog:
+  destination: file
+  logAppend: true
+  path: {{ mongodb_log_dir }}/mongod.log
+
+# 网络配置
+net:
+  port: {{ mongodb_port }}
+  bindIp: {{ mongodb_bind_ip }}
+
+# 进程管理
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+
+# 安全配置
+{% if mongodb_auth_enabled %}
+security:
+  authorization: enabled
+{% endif %}
+
+# 副本集配置
+{% if mongodb_replica_set_name %}
+replication:
+  replSetName: {{ mongodb_replica_set_name }}
+{% endif %}

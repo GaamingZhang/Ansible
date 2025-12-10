@@ -1,0 +1,91 @@
+# Redis 配置文件
+# 由 Ansible 自动生成
+
+# 网络配置
+bind {{ redis_bind_address }}
+port {{ redis_port }}
+protected-mode {{ redis_protected_mode }}
+tcp-backlog {{ redis_tcp_backlog }}
+timeout {{ redis_timeout }}
+tcp-keepalive {{ redis_tcp_keepalive }}
+
+# 通用配置
+daemonize yes
+supervised no
+pidfile {{ redis_pid_dir }}/redis.pid
+loglevel {{ redis_loglevel }}
+logfile {{ redis_logfile }}
+databases {{ redis_databases }}
+
+# 安全配置
+{% if redis_password %}
+requirepass {{ redis_password }}
+masterauth {{ redis_password }}
+{% endif %}
+
+# 持久化配置 - RDB
+{% if redis_save_enabled %}
+{% for interval in redis_save_intervals %}
+save {{ interval }}
+{% endfor %}
+{% else %}
+save ""
+{% endif %}
+
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir {{ redis_data_dir }}
+
+# 持久化配置 - AOF
+appendonly {{ redis_appendonly }}
+appendfilename "appendonly.aof"
+appendfsync {{ redis_appendfsync }}
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-load-truncated yes
+aof-use-rdb-preamble yes
+
+# 内存管理
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy {{ redis_maxmemory_policy }}
+
+# 集群配置
+{% if redis_cluster_enabled %}
+cluster-enabled yes
+cluster-config-file {{ redis_data_dir }}/nodes.conf
+cluster-node-timeout {{ redis_cluster_node_timeout }}
+cluster-require-full-coverage {{ redis_cluster_require_full_coverage }}
+{% endif %}
+
+# 慢查询日志
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+
+# 延迟监控
+latency-monitor-threshold 100
+
+# 事件通知
+notify-keyspace-events ""
+
+# 高级配置
+hash-max-ziplist-entries 512
+hash-max-ziplist-value 64
+list-max-ziplist-size -2
+list-compress-depth 0
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+hll-sparse-max-bytes 3000
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+activerehashing yes
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+hz 10
+dynamic-hz yes
+aof-rewrite-incremental-fsync yes
+rdb-save-incremental-fsync yes

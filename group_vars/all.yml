@@ -1,0 +1,34 @@
+---
+# 全局变量配置
+ansible_user: node
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+# HTTP 代理设置
+http_proxy: "http://192.168.31.132:20171"
+https_proxy: "http://192.168.31.132:20171"
+no_proxy: "localhost,127.0.0.1,192.168.31.0/24,10.96.0.0/12,10.244.0.0/16"
+
+# Kubernetes 版本
+kubernetes_version: "1.31.3"
+kubernetes_version_rhel_package: "1.31.3-*"
+
+# Containerd 版本
+containerd_version: "1.7.22"
+
+# Kube-vip 配置
+kube_vip_version: "v0.8.7"
+kube_vip_vip: "192.168.31.100"  # API Server 虚拟 IP
+kube_vip_interface: "enp2s0"  # 请根据实际网络接口修改
+
+# Kubernetes 集群配置
+kubernetes_pod_network_cidr: "10.244.0.0/16"
+kubernetes_service_cidr: "10.96.0.0/12"
+kubernetes_cluster_name: "kubernetes"
+kubernetes_api_server_port: 6443
+
+# CNI 插件 (使用 Calico)
+cni_plugin: "calico"
+calico_version: "v3.29.1"
+
+# GitLab 版本
+gitlab_version: "18.6.1-ce.0"

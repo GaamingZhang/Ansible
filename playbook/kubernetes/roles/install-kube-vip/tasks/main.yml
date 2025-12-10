@@ -1,0 +1,38 @@
+---
+# Kube-vip 安装和配置（Ubuntu专用）
+
+- name: 拉取 kube-vip 镜像
+  shell: |
+    export HTTP_PROXY="{{ http_proxy | default('') }}"
+    export HTTPS_PROXY="{{ https_proxy | default('') }}"
+    export NO_PROXY="{{ no_proxy | default('localhost,127.0.0.1') }}"
+    ctr -n k8s.io image pull ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+  args:
+    creates: /var/lib/containerd/io.containerd.content.v1.content/ingest
+  register: pull_result
+  changed_when: "'Downloaded' in pull_result.stdout or pull_result.rc == 0"
+  failed_when: false
+
+- name: 创建 kube-vip 配置目录
+  file:
+    path: /etc/kubernetes/manifests
+    state: directory
+    mode: '0755'
+
+- name: 检查 kube-vip manifest 是否存在
+  stat:
+    path: /etc/kubernetes/manifests/kube-vip.yaml
+  register: kube_vip_manifest
+
+- name: 生成 kube-vip static pod manifest (使用容器)
+  shell: |
+    ctr -n k8s.io run --rm --net-host \
+      ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }} \
+      vip /kube-vip manifest pod \
+      --interface {{ kube_vip_interface }} \
+      --address {{ kube_vip_vip }} \
+      --controlplane \
+      --services \
+      --arp \
+      --leaderElection > /etc/kubernetes/manifests/kube-vip.yaml
+  when: not kube_vip_manifest.stat.exists

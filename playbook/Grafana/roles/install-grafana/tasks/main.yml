@@ -1,0 +1,130 @@
+---
+- name: 安装依赖包
+  apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - wget
+      - gnupg
+    state: present
+    update_cache: yes
+
+- name: 添加 Grafana GPG 密钥
+  apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 添加 Grafana APT 仓库
+  apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+    filename: grafana
+
+- name: 更新 apt 缓存
+  apt:
+    update_cache: yes
+
+- name: 安装 Grafana Enterprise
+  apt:
+    name: "grafana-enterprise={{ grafana_version }}"
+    state: present
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 创建 Grafana 配置目录
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: '0755'
+  loop:
+    - "{{ grafana_provisioning_dir }}/datasources"
+    - "{{ grafana_provisioning_dir }}/dashboards"
+    - "{{ grafana_data_dir }}/dashboards"
+
+- name: 配置 Grafana
+  template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: grafana
+    group: grafana
+    mode: '0640'
+  notify: restart grafana
+
+- name: 配置 Prometheus 数据源
+  template:
+    src: prometheus-datasource.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/datasources/prometheus.yml"
+    owner: grafana
+    group: grafana
+    mode: '0644'
+  when: grafana_auto_configure_prometheus
+  notify: restart grafana
+
+- name: 配置仪表板 provisioning
+  template:
+    src: dashboards-provisioning.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/dashboards/default.yml"
+    owner: grafana
+    group: grafana
+    mode: '0644'
+  when: grafana_install_dashboards
+  notify: restart grafana
+
+- name: 创建节点监控仪表板
+  copy:
+    src: node-exporter-dashboard.json
+    dest: "{{ grafana_data_dir }}/dashboards/node-exporter-dashboard.json"
+    owner: grafana
+    group: grafana
+    mode: '0644'
+  when: grafana_install_dashboards
+  notify: restart grafana
+
+- name: 启动并启用 Grafana 服务
+  systemd:
+    name: grafana-server
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: 等待 Grafana 启动
+  wait_for:
+    port: "{{ grafana_http_port }}"
+    delay: 5
+    timeout: 60
+
+- name: 验证 Grafana 健康状态
+  uri:
+    url: "http://localhost:{{ grafana_http_port }}/api/health"
+    method: GET
+    return_content: yes
+  register: grafana_health
+  retries: 3
+  delay: 5
+
+- name: 显示 Grafana 访问信息
+  debug:
+    msg:
+      - "========================================"
+      - "Grafana 安装成功!"
+      - "========================================"
+      - "访问地址: http://{{ ansible_host }}:{{ grafana_http_port }}"
+      - "默认用户名: {{ grafana_admin_user }}"
+      - "默认密码: {{ grafana_admin_password }}"
+      - "========================================"
+      - "已配置的数据源:"
+      - "  - Prometheus: {{ prometheus_datasource_url }}"
+      - "========================================"
+      - "已安装的仪表板:"
+      - "  - Node Exporter Full (所有节点监控)"
+      - "========================================"
+      - "健康状态: {{ grafana_health.json.database }}"
+      - "========================================"
+      - "注意: 首次登录后请修改默认密码!"
+      - "========================================"

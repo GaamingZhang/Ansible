@@ -1,0 +1,40 @@
+---
+# 加入其他主节点
+
+- name: 复制 master join 命令
+  copy:
+    src: /tmp/master-join-command.sh
+    dest: /home/node/master-join-command.sh
+    mode: '0755'
+    owner: node
+    group: node
+
+- name: 检查节点是否已加入集群
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: node_joined
+
+- name: 执行 join 命令
+  shell: bash /home/node/master-join-command.sh
+  environment:
+    HTTP_PROXY: "{{ http_proxy }}"
+    HTTPS_PROXY: "{{ https_proxy }}"
+    NO_PROXY: "{{ no_proxy }}"
+  when: not node_joined.stat.exists
+
+- name: 创建 .kube 目录
+  file:
+    path: /home/node/.kube
+    state: directory
+    mode: '0755'
+    owner: node
+    group: node
+
+- name: 复制 kubeconfig
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/node/.kube/config
+    owner: node
+    group: node
+    remote_src: yes
+    mode: '0600'

@@ -1,0 +1,35 @@
+[Unit]
+Description=Prometheus Monitoring System
+Documentation=https://prometheus.io/docs/introduction/overview/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ prometheus_user }}
+Group={{ prometheus_group }}
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStart={{ prometheus_install_dir }}/prometheus \
+  --config.file={{ prometheus_config_dir }}/prometheus.yml \
+  --storage.tsdb.path={{ prometheus_data_dir }} \
+  --storage.tsdb.retention.time={{ prometheus_retention_time }} \
+  --storage.tsdb.retention.size={{ prometheus_retention_size }} \
+  --web.console.templates={{ prometheus_config_dir }}/consoles \
+  --web.console.libraries={{ prometheus_config_dir }}/console_libraries \
+  --web.listen-address={{ prometheus_listen_address }}:{{ prometheus_port }} \
+  --web.enable-lifecycle \
+  --web.enable-admin-api
+
+SyslogIdentifier=prometheus
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+{% if http_proxy is defined and http_proxy %}
+Environment="HTTP_PROXY={{ http_proxy }}"
+Environment="HTTPS_PROXY={{ https_proxy }}"
+Environment="NO_PROXY={{ no_proxy | default('localhost,127.0.0.1') }}"
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

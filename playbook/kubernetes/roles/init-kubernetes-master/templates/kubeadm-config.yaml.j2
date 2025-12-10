@@ -1,0 +1,47 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v{{ kubernetes_version }}
+clusterName: {{ kubernetes_cluster_name }}
+controlPlaneEndpoint: "{{ kube_vip_vip }}:{{ kubernetes_api_server_port }}"
+networking:
+  podSubnet: {{ kubernetes_pod_network_cidr }}
+  serviceSubnet: {{ kubernetes_service_cidr }}
+apiServer:
+  certSANs:
+    - "{{ kube_vip_vip }}"
+    - "localhost"
+    - "127.0.0.1"
+{% for host in groups['kubernetes_masters'] %}
+    - "{{ hostvars[host]['ansible_host'] }}"
+    - "{{ host }}"
+{% endfor %}
+  extraArgs:
+    - name: service-node-port-range
+      value: "30000-32767"
+controllerManager:
+  extraArgs:
+    - name: bind-address
+      value: "0.0.0.0"
+    - name: node-cidr-mask-size
+      value: "24"
+scheduler:
+  extraArgs:
+    - name: bind-address
+      value: "0.0.0.0"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ ansible_host }}
+  bindPort: {{ kubernetes_api_server_port }}
+nodeRegistration:
+  criSocket: unix:///run/containerd/containerd.sock
+  kubeletExtraArgs:
+    - name: cgroup-driver
+      value: systemd
+    - name: container-runtime-endpoint
+      value: unix:///run/containerd/containerd.sock
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd

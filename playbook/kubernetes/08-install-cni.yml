@@ -1,0 +1,8 @@
+---
+- name: 安装 CNI 网络插件（Ubuntu专用）
+  hosts: kubernetes_first_master
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  roles:
+    - install-cni

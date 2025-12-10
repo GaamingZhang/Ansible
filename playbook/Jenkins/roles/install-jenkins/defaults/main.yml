@@ -1,0 +1,39 @@
+---
+# Jenkins 安装配置变量
+
+# Jenkins 版本
+jenkins_version: "2.528.2"  # LTS 最新版本 (2025-12-09)
+
+# Java 版本
+java_version: "openjdk-17-jre"
+
+# Jenkins 端口配置
+jenkins_http_port: 8080
+jenkins_ajp_port: -1  # 禁用 AJP
+
+# Jenkins 主目录
+jenkins_home: "/var/lib/jenkins"
+
+# Jenkins 用户
+jenkins_user: "jenkins"
+jenkins_group: "jenkins"
+
+# Jenkins 启动参数
+jenkins_java_options: "-Djava.awt.headless=true -Xmx2g -Xms512m"
+jenkins_args: "--httpPort={{ jenkins_http_port }}"
+
+# 代理配置（如果需要）
+# http_proxy: "http://192.168.31.132:20171"
+# https_proxy: "http://192.168.31.132:20171"
+# no_proxy: "localhost,127.0.0.1,192.168.31.0/24"
+
+# 初始插件列表（可选，留空则使用默认建议插件）
+jenkins_plugins: []
+#  - git
+#  - workflow-aggregator
+#  - docker-workflow
+#  - kubernetes
+#  - configuration-as-code
+
+# 是否跳过初始设置向导
+jenkins_skip_initial_setup: false

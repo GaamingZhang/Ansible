@@ -1,0 +1,36 @@
+---
+- name: 安装 Prometheus 监控系统到虚拟机
+  hosts: prometheus_cluster
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  
+  roles:
+    - install-prometheus
+  
+  tasks:
+    - name: 验证 Prometheus 服务状态
+      systemd:
+        name: prometheus
+        state: started
+      register: prometheus_status
+
+    - name: 验证 Node Exporter 服务状态
+      systemd:
+        name: node_exporter
+        state: started
+      register: node_exporter_status
+      when: install_node_exporter | default(true)
+
+    - name: 测试 Prometheus API
+      uri:
+        url: "http://localhost:{{ prometheus_port }}/-/healthy"
+        method: GET
+        return_content: yes
+      register: prometheus_health
+      retries: 3
+      delay: 5
+
+    - name: 显示健康检查结果
+      debug:
+        msg: "Prometheus 健康状态: {{ prometheus_health.content }}"

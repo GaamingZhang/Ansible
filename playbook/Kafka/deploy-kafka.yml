@@ -1,0 +1,57 @@
+---
+- name: 安装 Kafka
+  hosts: kafka_cluster
+  become: yes
+  vars:
+    kafka_version: "3.9.0"
+    kafka_heap_opts: "-Xmx1G -Xms1G"
+  roles:
+    - install-kafka
+  
+  post_tasks:
+    - name: 创建测试主题
+      shell: |
+        {{ kafka_install_dir }}/bin/kafka-topics.sh --create \
+          --bootstrap-server localhost:{{ kafka_port }} \
+          --topic test-topic \
+          --partitions 1 \
+          --replication-factor 1 \
+          --if-not-exists
+      become: yes
+      become_user: kafka
+      register: topic_create
+      failed_when: false
+
+    - name: 列出所有主题
+      shell: "{{ kafka_install_dir }}/bin/kafka-topics.sh --list --bootstrap-server localhost:{{ kafka_port }}"
+      become: yes
+      become_user: kafka
+      register: topics_list
+      changed_when: false
+
+    - name: 显示 Kafka 安装信息
+      debug:
+        msg:
+          - "=========================================="
+          - "Kafka 安装完成！"
+          - "=========================================="
+          - "Kafka 版本: {{ kafka_version }}"
+          - "Kafka 地址: {{ ansible_host }}:{{ kafka_port }}"
+          - "ZooKeeper 地址: {{ ansible_host }}:{{ kafka_zookeeper_port }}"
+          - "安装目录: {{ kafka_install_dir }}"
+          - "数据目录: {{ kafka_data_dir }}"
+          - "日志目录: {{ kafka_log_dir }}"
+          - "=========================================="
+          - "现有主题列表:"
+          - "{{ topics_list.stdout_lines }}"
+          - "=========================================="
+          - "测试命令:"
+          - "  # 创建主题"
+          - "  {{ kafka_install_dir }}/bin/kafka-topics.sh --create --bootstrap-server {{ ansible_host }}:{{ kafka_port }} --topic my-topic --partitions 3 --replication-factor 1"
+          - ""
+          - "  # 生产消息"
+          - "  {{ kafka_install_dir }}/bin/kafka-console-producer.sh --bootstrap-server {{ ansible_host }}:{{ kafka_port }} --topic test-topic"
+          - ""
+          - "  # 消费消息"
+          - "  {{ kafka_install_dir }}/bin/kafka-console-consumer.sh --bootstrap-server {{ ansible_host }}:{{ kafka_port }} --topic test-topic --from-beginning"
+          - "=========================================="

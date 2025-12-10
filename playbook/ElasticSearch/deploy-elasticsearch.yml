@@ -1,0 +1,20 @@
+---
+- name: 部署 ElasticSearch
+  hosts: ElasticSearch_cluster
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - install-elasticsearch
+
+  post_tasks:
+    - name: 显示安装完成信息
+      debug:
+        msg:
+          - "=========================================="
+          - "ElasticSearch 部署完成!"
+          - "=========================================="
+          - "访问 ElasticSearch (无需密码):"
+          - "curl http://{{ ansible_default_ipv4.address }}:9200"
+          - "curl http://{{ ansible_default_ipv4.address }}:9200/_cluster/health?pretty"
+          - "=========================================="

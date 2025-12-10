@@ -1,0 +1,23 @@
+[Unit]
+Description=Apache Kafka Server
+Documentation=http://kafka.apache.org/documentation.html
+After=network.target zookeeper.service
+Requires=zookeeper.service
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+Environment="KAFKA_HEAP_OPTS={{ kafka_heap_opts }}"
+Environment="KAFKA_JVM_PERFORMANCE_OPTS={{ kafka_jvm_performance_opts }}"
+Environment="LOG_DIR={{ kafka_log_dir }}"
+ExecStart={{ kafka_install_dir }}/bin/kafka-server-start.sh {{ kafka_install_dir }}/config/server.properties
+ExecStop={{ kafka_install_dir }}/bin/kafka-server-stop.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kafka
+
+[Install]
+WantedBy=multi-user.target

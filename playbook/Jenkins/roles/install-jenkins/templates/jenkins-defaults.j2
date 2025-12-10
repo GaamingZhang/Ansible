@@ -1,0 +1,26 @@
+# Jenkins 配置文件
+# /etc/default/jenkins
+
+JENKINS_USER="{{ jenkins_user }}"
+JENKINS_GROUP="{{ jenkins_group }}"
+JENKINS_HOME="{{ jenkins_home }}"
+
+# Jenkins Java 选项
+JAVA_ARGS="{{ jenkins_java_options }}"
+
+# Jenkins 启动参数
+JENKINS_ARGS="{{ jenkins_args }}"
+
+# Jenkins 端口
+HTTP_PORT="{{ jenkins_http_port }}"
+AJP_PORT="{{ jenkins_ajp_port }}"
+
+{% if http_proxy is defined and http_proxy != '' %}
+# 代理配置
+export HTTP_PROXY="{{ http_proxy }}"
+export HTTPS_PROXY="{{ https_proxy }}"
+export NO_PROXY="{{ no_proxy }}"
+export http_proxy="{{ http_proxy }}"
+export https_proxy="{{ https_proxy }}"
+export no_proxy="{{ no_proxy }}"
+{% endif %}

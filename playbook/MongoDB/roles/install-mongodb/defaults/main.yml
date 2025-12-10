@@ -1,0 +1,41 @@
+---
+# MongoDB 默认配置
+
+# MongoDB 版本 (留空则安装最新版本)
+mongodb_version: ""
+
+# MongoDB 数据目录
+mongodb_data_dir: /var/lib/mongodb
+
+# MongoDB 日志目录
+mongodb_log_dir: /var/log/mongodb
+
+# MongoDB 配置文件路径
+mongodb_config_file: /etc/mongod.conf
+
+# MongoDB 端口
+mongodb_port: 27017
+
+# MongoDB 绑定 IP (0.0.0.0 表示监听所有接口)
+mongodb_bind_ip: 0.0.0.0
+
+# MongoDB 副本集名称 (如果需要副本集，请设置此项)
+mongodb_replica_set_name: ""
+
+# MongoDB 认证
+mongodb_auth_enabled: false
+
+# MongoDB root 用户
+mongodb_root_username: admin
+mongodb_root_password: "{{ vault_mongodb_root_password | default('ChangeMe123!') }}"
+
+# MongoDB 数据库用户
+mongodb_users: []
+#  - name: appuser
+#    password: "apppass123"
+#    database: appdb
+#    roles: "readWrite"
+
+# 系统设置
+mongodb_max_open_files: 64000
+mongodb_max_processes: 64000

@@ -1,0 +1,35 @@
+---
+# ElasticSearch 安装配置变量
+
+# ElasticSearch 版本（默认安装最新的 8.x 版本）
+elasticsearch_version: "8.x"
+
+# ElasticSearch 集群名称
+elasticsearch_cluster_name: "elasticsearch-cluster"
+
+# ElasticSearch 节点名称
+elasticsearch_node_name: "{{ ansible_hostname }}"
+
+# ElasticSearch 数据目录
+elasticsearch_data_dir: "/var/lib/elasticsearch"
+
+# ElasticSearch 日志目录
+elasticsearch_log_dir: "/var/log/elasticsearch"
+
+# ElasticSearch 网络配置
+elasticsearch_network_host: "0.0.0.0"
+elasticsearch_http_port: 9200
+elasticsearch_transport_port: 9300
+
+# ElasticSearch 内存配置（堆内存大小）
+elasticsearch_heap_size: "1g"
+
+# ElasticSearch 安全配置
+elasticsearch_enable_security: false
+
+# ElasticSearch 发现配置
+elasticsearch_discovery_type: "single-node"
+
+# ElasticSearch 用户和组
+elasticsearch_user: "elasticsearch"
+elasticsearch_group: "elasticsearch"

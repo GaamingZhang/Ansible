@@ -1,0 +1,16 @@
+## JVM configuration
+
+################################################################
+## IMPORTANT: JVM heap size
+################################################################
+##
+## The heap size is automatically configured by Elasticsearch
+## based on the available memory in your system and the roles
+## each node is configured to fulfill. If specifying heap is
+## required, it should be done through a file in jvm.options.d,
+## which should be created with the heap size configuration as below.
+##
+################################################################
+
+-Xms{{ elasticsearch_heap_size }}
+-Xmx{{ elasticsearch_heap_size }}

@@ -1,0 +1,59 @@
+---
+- name: 安装 Grafana 到虚拟机
+  hosts: grafana_cluster
+  become: yes
+  vars_files:
+    - ../../group_vars/all.yml
+  
+  roles:
+    - install-grafana
+  
+  tasks:
+    - name: 验证 Grafana 服务状态
+      systemd:
+        name: grafana-server
+        state: started
+      register: grafana_status
+
+    - name: 等待 Grafana 完全启动
+      pause:
+        seconds: 10
+
+    - name: 测试 Grafana API
+      uri:
+        url: "http://localhost:{{ grafana_http_port }}/api/health"
+        method: GET
+        return_content: yes
+      register: grafana_health
+      retries: 5
+      delay: 3
+
+    - name: 测试 Prometheus 数据源连接
+      uri:
+        url: "http://localhost:{{ grafana_http_port }}/api/datasources"
+        method: GET
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: yes
+        return_content: yes
+      register: datasources
+
+    - name: 显示最终安装信息
+      debug:
+        msg:
+          - "========================================"
+          - "Grafana 安装完成！"
+          - "========================================"
+          - "访问地址: http://{{ ansible_host }}:{{ grafana_http_port }}"
+          - "用户名: {{ grafana_admin_user }}"
+          - "密码: {{ grafana_admin_password }}"
+          - "========================================"
+          - "Prometheus 数据源已自动配置"
+          - "节点监控仪表板已自动导入"
+          - "========================================"
+          - "建议操作："
+          - "1. 访问 Grafana Web UI"
+          - "2. 使用默认凭据登录"
+          - "3. 修改默认密码"
+          - "4. 查看仪表板: Home > Dashboards > 所有节点监控概览"
+          - "========================================"

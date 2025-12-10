@@ -1,0 +1,60 @@
+---
+# Redis 集群配置变量
+
+# Redis 版本
+redis_version: "8.0.1"  # 最新稳定版本
+redis_download_url: "https://download.redis.io/redis-stable.tar.gz"
+
+# Redis 安装目录
+redis_install_dir: "/opt/redis"
+redis_config_dir: "/etc/redis"
+redis_data_dir: "/var/lib/redis"
+redis_log_dir: "/var/log/redis"
+redis_pid_dir: "/var/run/redis"
+
+# Redis 用户和组
+redis_user: "redis"
+redis_group: "redis"
+
+# Redis 集群配置
+redis_port: 6379
+redis_cluster_port: 16379  # 集群总线端口 (port + 10000)
+redis_bind_address: "0.0.0.0"
+redis_password: ""  # 空密码表示不需要认证
+redis_maxmemory: "2gb"
+redis_maxmemory_policy: "allkeys-lru"
+
+# 集群配置
+redis_cluster_enabled: true
+redis_cluster_replicas: 1  # 每个主节点的副本数
+redis_cluster_node_timeout: 5000
+redis_cluster_require_full_coverage: "yes"
+
+# 持久化配置
+redis_save_enabled: true
+redis_save_intervals:
+  - "900 1"    # 900秒内至少1个键改变
+  - "300 10"   # 300秒内至少10个键改变
+  - "60 10000" # 60秒内至少10000个键改变
+
+redis_appendonly: "yes"
+redis_appendfsync: "everysec"
+
+# 性能配置
+redis_tcp_backlog: 511
+redis_timeout: 0
+redis_tcp_keepalive: 300
+redis_databases: 16
+
+# 日志配置
+redis_loglevel: "notice"
+redis_logfile: "{{ redis_log_dir }}/redis.log"
+
+# 安全配置
+redis_protected_mode: "no"  # 集群模式需要关闭保护模式
+redis_rename_commands: []
+
+# 代理配置（如果需要）
+# http_proxy: "http://192.168.31.132:20171"
+# https_proxy: "http://192.168.31.132:20171"
+# no_proxy: "localhost,127.0.0.1,192.168.31.0/24"

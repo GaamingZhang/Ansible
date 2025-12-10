@@ -1,0 +1,139 @@
+---
+- name: 安装依赖包
+  apt:
+    name:
+      - build-essential
+      - tcl
+      - pkg-config
+      - libssl-dev
+      - wget
+      - curl
+    state: present
+    update_cache: yes
+
+- name: 创建 Redis 用户组
+  group:
+    name: "{{ redis_group }}"
+    state: present
+    system: yes
+
+- name: 创建 Redis 用户
+  user:
+    name: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    system: yes
+    shell: /sbin/nologin
+    home: "{{ redis_data_dir }}"
+    createhome: no
+
+- name: 创建 Redis 目录
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    mode: '0755'
+  loop:
+    - "{{ redis_install_dir }}"
+    - "{{ redis_config_dir }}"
+    - "{{ redis_data_dir }}"
+    - "{{ redis_log_dir }}"
+    - "{{ redis_pid_dir }}"
+
+- name: 下载 Redis
+  get_url:
+    url: "{{ redis_download_url }}"
+    dest: "/tmp/redis-stable.tar.gz"
+    mode: '0644'
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 解压 Redis
+  unarchive:
+    src: "/tmp/redis-stable.tar.gz"
+    dest: "/tmp"
+    remote_src: yes
+
+- name: 编译 Redis
+  shell: |
+    cd /tmp/redis-stable
+    make -j$(nproc) BUILD_TLS=yes
+    make install PREFIX={{ redis_install_dir }}
+  args:
+    creates: "{{ redis_install_dir }}/bin/redis-server"
+
+- name: 创建 Redis 配置文件
+  template:
+    src: redis.conf.j2
+    dest: "{{ redis_config_dir }}/redis.conf"
+    owner: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    mode: '0640'
+  notify: restart redis
+
+- name: 创建 Redis systemd service
+  template:
+    src: redis.service.j2
+    dest: /etc/systemd/system/redis.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: 配置系统参数
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: 'vm.overcommit_memory', value: '1' }
+    - { name: 'net.core.somaxconn', value: '65535' }
+
+- name: 禁用透明大页
+  lineinfile:
+    path: /etc/rc.local
+    line: 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+    create: yes
+    mode: '0755'
+
+- name: 立即禁用透明大页
+  shell: echo never > /sys/kernel/mm/transparent_hugepage/enabled
+  changed_when: false
+
+- name: 清理临时文件
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/redis-stable.tar.gz"
+    - "/tmp/redis-stable"
+
+- name: 启动并启用 Redis 服务
+  systemd:
+    name: redis
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: 等待 Redis 启动
+  wait_for:
+    port: "{{ redis_port }}"
+    delay: 3
+    timeout: 30
+
+- name: 验证 Redis 服务
+  command: "{{ redis_install_dir }}/bin/redis-cli {% if redis_password %}-a {{ redis_password }}{% endif %} ping"
+  register: redis_ping
+  changed_when: false
+  failed_when: redis_ping.stdout != "PONG"
+
+- name: 显示 Redis 节点信息
+  debug:
+    msg:
+      - "========================================"
+      - "Redis 节点安装成功！"
+      - "========================================"
+      - "节点地址: {{ ansible_host }}:{{ redis_port }}"
+      - "集群端口: {{ ansible_host }}:{{ redis_cluster_port }}"
+      - "密码: {{ redis_password }}"
+      - "========================================"

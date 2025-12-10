@@ -1,0 +1,68 @@
+---
+# Kubernetes 高可用集群部署 Playbook
+# 2 个主节点 + 4 个工作节点 + kube-vip 高可用
+
+- name: 准备所有节点
+  hosts: kubernetes_cluster
+  become: yes
+  roles:
+    - system-prepare
+    - install-containerd
+    - install-kubernetes
+
+- name: 初始化第一个主节点并安装 kube-vip
+  hosts: kubernetes_first_master
+  become: yes
+  roles:
+    - install-kube-vip
+    - init-kubernetes-master
+    - install-cni
+
+- name: 加入其他主节点
+  hosts: kubernetes_masters:!kubernetes_first_master
+  become: yes
+  serial: 1
+  roles:
+    - install-kube-vip
+    - join-kubernetes-master
+
+- name: 加入工作节点
+  hosts: kubernetes_workers
+  become: yes
+  serial: 2
+  roles:
+    - join-kubernetes-worker
+
+- name: 验证集群状态
+  hosts: kubernetes_first_master
+  become: yes
+  tasks:
+    - name: 获取节点状态
+      shell: kubectl get nodes -o wide
+      register: nodes_status
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: 显示节点状态
+      debug:
+        var: nodes_status.stdout_lines
+
+    - name: 获取所有 pods 状态
+      shell: kubectl get pods -A
+      register: pods_status
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: 显示 pods 状态
+      debug:
+        var: pods_status.stdout_lines
+
+    - name: 检查集群信息
+      shell: kubectl cluster-info
+      register: cluster_info
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: 显示集群信息
+      debug:
+        var: cluster_info.stdout_lines

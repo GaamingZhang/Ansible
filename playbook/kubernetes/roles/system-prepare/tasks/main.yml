@@ -1,0 +1,84 @@
+---
+# 系统准备任务
+
+- name: 设置主机名
+  hostname:
+    name: "{{ inventory_hostname }}"
+  become: true
+
+- name: 更新 /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+    state: present
+  loop: "{{ groups['kubernetes_cluster'] }}"
+  become: true
+
+- name: 禁用 swap
+  shell: swapoff -a
+  changed_when: false
+  become: true
+
+- name: 永久禁用 swap
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+    replace: '# \1'
+  become: true
+
+- name: 加载必要的内核模块
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+  become: true
+
+- name: 配置内核模块自动加载
+  copy:
+    content: |
+      overlay
+      br_netfilter
+    dest: /etc/modules-load.d/kubernetes.conf
+  become: true
+
+- name: 配置系统参数
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/kubernetes.conf
+    reload: yes
+  loop:
+    - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { name: 'net.ipv4.ip_forward', value: '1' }
+    - { name: 'net.ipv4.conf.all.forwarding', value: '1' }
+  become: true
+
+- name: 禁用防火墙
+  systemd:
+    name: ufw
+    state: stopped
+    enabled: no
+  ignore_errors: true
+  become: true
+
+- name: 安装必要的软件包
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - socat
+      - conntrack
+      - ipset
+    state: present
+    update_cache: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+  become: true

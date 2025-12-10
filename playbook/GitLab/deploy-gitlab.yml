@@ -1,0 +1,7 @@
+---
+- name: 安装 GitLab 到虚拟机
+  hosts: gitLab_cluster
+  gather_facts: yes
+  become: yes
+  roles:
+    - install-gitlab

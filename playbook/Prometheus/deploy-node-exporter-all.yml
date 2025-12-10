@@ -1,0 +1,108 @@
+---
+- name: 在所有节点安装 Node Exporter
+  hosts: allNodes
+  become: yes
+  vars:
+    node_exporter_version: "1.10.2"
+    node_exporter_download_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    node_exporter_port: 9100
+    prometheus_user: "prometheus"
+    prometheus_group: "prometheus"
+    prometheus_install_dir: "/opt/prometheus"
+  
+  tasks:
+    - name: 创建 Prometheus 用户组
+      group:
+        name: "{{ prometheus_group }}"
+        state: present
+        system: yes
+
+    - name: 创建 Prometheus 用户
+      user:
+        name: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        system: yes
+        shell: /sbin/nologin
+        createhome: no
+
+    - name: 创建安装目录
+      file:
+        path: "{{ prometheus_install_dir }}"
+        state: directory
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        mode: '0755'
+
+    - name: 下载 Node Exporter
+      get_url:
+        url: "{{ node_exporter_download_url }}"
+        dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        mode: '0644'
+      environment:
+        http_proxy: "{{ http_proxy | default('') }}"
+        https_proxy: "{{ https_proxy | default('') }}"
+
+    - name: 解压 Node Exporter
+      unarchive:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        dest: "/tmp"
+        remote_src: yes
+
+    - name: 复制 Node Exporter 二进制文件
+      copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        dest: "{{ prometheus_install_dir }}/node_exporter"
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        mode: '0755'
+        remote_src: yes
+
+    - name: 创建 Node Exporter systemd service
+      template:
+        src: node_exporter.service.j2
+        dest: /etc/systemd/system/node_exporter.service
+        mode: '0644'
+      notify: restart node_exporter
+
+    - name: 清理临时文件
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
+
+    - name: 重新加载 systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: 启动并启用 Node Exporter 服务
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+
+    - name: 等待 Node Exporter 启动
+      wait_for:
+        port: "{{ node_exporter_port }}"
+        delay: 2
+        timeout: 30
+
+    - name: 验证 Node Exporter
+      uri:
+        url: "http://localhost:{{ node_exporter_port }}/metrics"
+        method: GET
+        status_code: 200
+      register: node_exporter_check
+      retries: 3
+      delay: 2
+
+    - name: 显示安装信息
+      debug:
+        msg: "Node Exporter 已安装在 {{ inventory_hostname }} ({{ ansible_host }}:{{ node_exporter_port }})"
+
+  handlers:
+    - name: restart node_exporter
+      systemd:
+        name: node_exporter
+        state: restarted

@@ -1,0 +1,41 @@
+---
+# Grafana 安装配置变量
+
+# Grafana 版本
+grafana_version: "12.3.0"  # 最新稳定版本 (2025-12-09)
+grafana_package_url: "https://dl.grafana.com/enterprise/release/grafana-enterprise_{{ grafana_version }}_amd64.deb"
+
+# Grafana 配置
+grafana_http_port: 3000
+grafana_http_addr: "0.0.0.0"
+grafana_domain: "{{ ansible_host }}"
+grafana_root_url: "http://{{ ansible_host }}:{{ grafana_http_port }}"
+
+# Grafana 管理员账号
+grafana_admin_user: "admin"
+grafana_admin_password: "admin123"  # 建议首次登录后修改
+
+# Grafana 数据库（默认使用 SQLite）
+grafana_database_type: "sqlite3"
+grafana_database_path: "/var/lib/grafana/grafana.db"
+
+# Grafana 目录
+grafana_data_dir: "/var/lib/grafana"
+grafana_logs_dir: "/var/log/grafana"
+grafana_plugins_dir: "/var/lib/grafana/plugins"
+grafana_provisioning_dir: "/etc/grafana/provisioning"
+
+# Prometheus 数据源配置
+prometheus_datasource_url: "http://192.168.31.80:9090"
+prometheus_datasource_name: "Prometheus"
+
+# 是否自动配置 Prometheus 数据源
+grafana_auto_configure_prometheus: true
+
+# 是否安装预配置的仪表板
+grafana_install_dashboards: true
+
+# 代理配置（如果需要）
+# http_proxy: "http://192.168.31.132:20171"
+# https_proxy: "http://192.168.31.132:20171"
+# no_proxy: "localhost,127.0.0.1,192.168.31.0/24"

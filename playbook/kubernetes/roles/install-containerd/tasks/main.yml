@@ -1,0 +1,105 @@
+---
+# Containerd 安装和配置
+
+- name: 添加 Docker GPG 密钥 (Ubuntu)
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 添加 Docker 仓库 (Ubuntu)
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+
+- name: 安装 containerd (Ubuntu)
+  apt:
+    name: containerd.io
+    state: present
+    update_cache: yes
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 创建 containerd 配置目录
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: 生成默认 containerd 配置
+  shell: containerd config default > /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+
+- name: 配置 containerd 使用 systemd cgroup driver
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+
+- name: 确保 CRI 插件未被禁用
+  lineinfile:
+    path: /etc/containerd/config.toml
+    regexp: '^\s*disabled_plugins\s*=\s*\["cri"\]'
+    state: absent
+  notify: restart containerd
+
+- name: 配置 containerd 代理
+  blockinfile:
+    path: /etc/systemd/system/containerd.service.d/http-proxy.conf
+    create: yes
+    block: |
+      [Service]
+      Environment="HTTP_PROXY={{ http_proxy | default('') }}"
+      Environment="HTTPS_PROXY={{ https_proxy | default('') }}"
+      Environment="NO_PROXY={{ no_proxy | default('localhost,127.0.0.1') }}"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK"
+  notify: restart containerd
+
+- name: 配置 containerd 镜像加速
+  blockinfile:
+    path: /etc/containerd/config.toml
+    insertafter: '^\s+\[plugins\."io\.containerd\.grpc\.v1\.cri"\.registry\.mirrors\]'
+    block: |
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+        endpoint = ["https://registry.docker-cn.com", "https://docker.mirrors.ustc.edu.cn"]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."k8s.gcr.io"]
+        endpoint = ["https://registry.aliyuncs.com/google_containers"]
+    marker: "# {mark} ANSIBLE MANAGED MIRROR BLOCK"
+  notify: restart containerd
+
+- name: 重新加载 systemd
+  systemd:
+    daemon_reload: yes
+
+- name: 启动并启用 containerd
+  systemd:
+    name: containerd
+    state: started
+    enabled: yes
+
+- name: 安装 crictl 工具
+  get_url:
+    url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.31.1/crictl-v1.31.1-linux-amd64.tar.gz"
+    dest: /tmp/crictl.tar.gz
+  environment:
+    http_proxy: "{{ http_proxy | default('') }}"
+    https_proxy: "{{ https_proxy | default('') }}"
+
+- name: 解压 crictl
+  unarchive:
+    src: /tmp/crictl.tar.gz
+    dest: /usr/local/bin/
+    remote_src: yes
+    mode: '0755'
+
+- name: 配置 crictl
+  copy:
+    content: |
+      runtime-endpoint: unix:///run/containerd/containerd.sock
+      image-endpoint: unix:///run/containerd/containerd.sock
+      timeout: 10
+    dest: /etc/crictl.yaml
