@@ -186,37 +186,42 @@
       "pluginVersion": "12.3.0",
       "targets": [
         {
-          "expr": "label_replace(up{job=\"all_nodes\"} == 0, \"nodename\", \"$1\", \"instance\", \"([^:]+):.*\") * on(instance) group_left(nodename) node_uname_info{job=\"all_nodes\"}",
+          "expr": "up{job=\"all_nodes\"} == 0",
           "format": "table",
           "instant": true,
-          "legendFormat": "{{nodename}}",
+          "legendFormat": "{{instance}}",
           "refId": "A"
         }
       ],
       "title": "离线节点",
       "transformations": [
         {
-          "id": "filterFieldsByName",
+          "id": "organize",
           "options": {
-            "include": {
-              "names": [
-                "nodename"
-              ]
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "instance": "离线节点"
             }
           }
         },
         {
-          "id": "reduce",
+          "id": "filterFieldsByName",
           "options": {
-            "includeTimeField": false,
-            "mode": "seriesToRows",
-            "reducers": [
-              "allValues"
-            ]
+            "include": {
+              "names": [
+                "离线节点"
+              ]
+            }
           }
         }
       ],
-      "type": "stat"
+      "type": "table"
     },
     {
       "datasource": "Prometheus",

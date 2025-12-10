@@ -139,14 +139,14 @@ Grafana 支持从 https://grafana.com/grafana/dashboards/ 导入仪表板：
 
 **离线节点检测**：
 ```promql
-label_replace(up{job="all_nodes"} == 0, "nodename", "$1", "instance", "([^:]+):.*") 
-* on(instance) group_left(nodename) node_uname_info{job="all_nodes"}
+up{job="all_nodes"} == 0
 ```
 说明: 
-- 查询所有 `up` 值为 0 的节点（离线节点）
-- 自动提取并显示节点名称
-- 如果所有节点在线，面板显示"全部在线"
-- 如果有节点离线，列出所有离线节点的名称
+- 直接查询所有 `up` 值为 0 的节点（离线节点）
+- 以表格形式显示离线节点的 instance 地址（IP:端口）
+- 如果所有节点在线，表格为空
+- 如果有节点离线，列出所有离线节点的地址
+- 不依赖 node_uname_info（离线时该指标不存在）
 
 **磁盘使用率**：
 ```promql
