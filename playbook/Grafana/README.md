@@ -45,13 +45,13 @@ ansible-playbook -i inventory/hosts.ini playbook/Grafana/update-dashboards.yml
 
 ```yaml
 grafana_version: "12.3.0"
-grafana_port: 3000
+grafana_http_port: 3000
 grafana_admin_user: "admin"
-grafana_admin_password: "admin"
+grafana_admin_password: "admin123"  # 自动设置此密码
 grafana_domain: "192.168.31.60"
 
 # Prometheus 数据源配置
-prometheus_url: "http://192.168.31.80:9090"
+prometheus_datasource_url: "http://192.168.31.80:9090"
 ```
 
 ## 访问 Grafana
@@ -59,8 +59,26 @@ prometheus_url: "http://192.168.31.80:9090"
 ### Web UI
 - URL: http://192.168.31.60:3000
 - 默认用户名: admin
-- 默认密码: admin
-- 首次登录会提示修改密码
+- 默认密码: admin123
+
+### 密码管理
+
+**自动密码设置**:
+- 部署时自动使用 `grafana-cli` 重置管理员密码
+- 密码为配置文件中设置的 `grafana_admin_password`
+- 无需首次登录修改密码
+
+**手动重置密码**:
+```bash
+# SSH 到 Grafana 服务器
+ssh node@192.168.31.60
+
+# 重置密码
+sudo grafana-cli admin reset-admin-password <新密码>
+
+# 重启服务
+sudo systemctl restart grafana-server
+```
 
 ## 预配置内容
 

@@ -99,14 +99,11 @@
     delay: 5
     timeout: 60
 
-- name: 验证 Grafana 健康状态
-  uri:
-    url: "http://localhost:{{ grafana_http_port }}/api/health"
-    method: GET
-    return_content: yes
-  register: grafana_health
-  retries: 3
-  delay: 5
+- name: 验证 Grafana 服务状态
+  systemd:
+    name: grafana-server
+    state: started
+  register: grafana_service_status
 
 - name: 显示 Grafana 访问信息
   debug:
@@ -124,7 +121,7 @@
       - "已安装的仪表板:"
       - "  - Node Exporter Full (所有节点监控)"
       - "========================================"
-      - "健康状态: {{ grafana_health.json.database }}"
+      - "服务状态: {{ grafana_service_status.status.ActiveState }}"
       - "========================================"
       - "注意: 首次登录后请修改默认密码!"
       - "========================================"
