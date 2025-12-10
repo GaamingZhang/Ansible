@@ -137,73 +137,159 @@ pipeline {
                 script {
                     if (params.DEPLOYMENT_MODE == 'parallel') {
                         echo "使用并行部署模式..."
-                        echo "⚠️  注意: 并行模式下，批准提示将依次显示"
-                        parallel(
-                            "Kubernetes": {
-                                if (params.DEPLOY_KUBERNETES) {
-                                    requestApproval('Kubernetes')
-                                    deployPlaybook('Kubernetes', 'playbook/kubernetes/deploy-k8s-cluster.yml')
-                                }
-                            },
-                            "Prometheus": {
-                                if (params.DEPLOY_PROMETHEUS) {
-                                    requestApproval('Prometheus')
-                                    deployPlaybook('Prometheus', 'playbook/Prometheus/deploy-prometheus.yml')
-                                    deployPlaybook('Node Exporter', 'playbook/Prometheus/deploy-node-exporter-all.yml')
-                                    deployPlaybook('Prometheus Config', 'playbook/Prometheus/update-prometheus-config.yml')
-                                }
-                            },
-                            "Grafana": {
-                                if (params.DEPLOY_GRAFANA) {
-                                    requestApproval('Grafana')
-                                    deployPlaybook('Grafana', 'playbook/Grafana/deploy-grafana.yml')
-                                }
-                            },
-                            "GitLab": {
-                                if (params.DEPLOY_GITLAB) {
-                                    requestApproval('GitLab')
-                                    deployPlaybook('GitLab', 'playbook/GitLab/deploy-gitlab.yml')
-                                }
-                            },
-                            "Jenkins": {
-                                if (params.DEPLOY_JENKINS) {
-                                    requestApproval('Jenkins')
-                                    deployPlaybook('Jenkins', 'playbook/Jenkins/deploy-jenkins.yml')
-                                }
-                            },
-                            "Redis": {
-                                if (params.DEPLOY_REDIS) {
-                                    requestApproval('Redis')
-                                    deployPlaybook('Redis', 'playbook/Redis/deploy-redis-cluster.yml')
-                                }
-                            },
-                            "MySQL": {
-                                if (params.DEPLOY_MYSQL) {
-                                    requestApproval('MySQL')
-                                    deployPlaybook('MySQL', 'playbook/MySQL/deploy-mysql.yml')
-                                }
-                            },
-                            "MongoDB": {
-                                if (params.DEPLOY_MONGODB) {
-                                    requestApproval('MongoDB')
-                                    deployPlaybook('MongoDB', 'playbook/MongoDB/deploy-mongodb.yml')
-                                }
-                            },
-                            "ElasticSearch": {
-                                if (params.DEPLOY_ELASTICSEARCH) {
-                                    requestApproval('ElasticSearch')
-                                    deployPlaybook('ElasticSearch', 'playbook/ElasticSearch/deploy-elasticsearch.yml')
-                                }
-                            },
-                            "Kafka": {
-                                if (params.DEPLOY_KAFKA) {
-                                    requestApproval('Kafka')
-                                    deployPlaybook('Kafka', 'playbook/Kafka/deploy-kafka.yml')
+                        echo "✓ 每个组件独立批准和部署，互不影响"
+                        
+                        def parallelStages = [:]
+                        
+                        if (params.DEPLOY_KUBERNETES) {
+                            parallelStages["Kubernetes"] = {
+                                stage('Kubernetes') {
+                                    try {
+                                        requestApproval('Kubernetes')
+                                        deployPlaybook('Kubernetes', 'playbook/kubernetes/deploy-k8s-cluster.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ Kubernetes 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
                                 }
                             }
-                        )
+                        }
+                        
+                        if (params.DEPLOY_PROMETHEUS) {
+                            parallelStages["Prometheus"] = {
+                                stage('Prometheus') {
+                                    try {
+                                        requestApproval('Prometheus')
+                                        deployPlaybook('Prometheus', 'playbook/Prometheus/deploy-prometheus.yml')
+                                        deployPlaybook('Node Exporter', 'playbook/Prometheus/deploy-node-exporter-all.yml')
+                                        deployPlaybook('Prometheus Config', 'playbook/Prometheus/update-prometheus-config.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ Prometheus 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_GRAFANA) {
+                            parallelStages["Grafana"] = {
+                                stage('Grafana') {
+                                    try {
+                                        requestApproval('Grafana')
+                                        deployPlaybook('Grafana', 'playbook/Grafana/deploy-grafana.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ Grafana 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_GITLAB) {
+                            parallelStages["GitLab"] = {
+                                stage('GitLab') {
+                                    try {
+                                        requestApproval('GitLab')
+                                        deployPlaybook('GitLab', 'playbook/GitLab/deploy-gitlab.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ GitLab 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_JENKINS) {
+                            parallelStages["Jenkins"] = {
+                                stage('Jenkins') {
+                                    try {
+                                        requestApproval('Jenkins')
+                                        deployPlaybook('Jenkins', 'playbook/Jenkins/deploy-jenkins.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ Jenkins 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_REDIS) {
+                            parallelStages["Redis"] = {
+                                stage('Redis') {
+                                    try {
+                                        requestApproval('Redis')
+                                        deployPlaybook('Redis', 'playbook/Redis/deploy-redis-cluster.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ Redis 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_MYSQL) {
+                            parallelStages["MySQL"] = {
+                                stage('MySQL') {
+                                    try {
+                                        requestApproval('MySQL')
+                                        deployPlaybook('MySQL', 'playbook/MySQL/deploy-mysql.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ MySQL 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_MONGODB) {
+                            parallelStages["MongoDB"] = {
+                                stage('MongoDB') {
+                                    try {
+                                        requestApproval('MongoDB')
+                                        deployPlaybook('MongoDB', 'playbook/MongoDB/deploy-mongodb.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ MongoDB 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_ELASTICSEARCH) {
+                            parallelStages["ElasticSearch"] = {
+                                stage('ElasticSearch') {
+                                    try {
+                                        requestApproval('ElasticSearch')
+                                        deployPlaybook('ElasticSearch', 'playbook/ElasticSearch/deploy-elasticsearch.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ ElasticSearch 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (params.DEPLOY_KAFKA) {
+                            parallelStages["Kafka"] = {
+                                stage('Kafka') {
+                                    try {
+                                        requestApproval('Kafka')
+                                        deployPlaybook('Kafka', 'playbook/Kafka/deploy-kafka.yml')
+                                    } catch (Exception e) {
+                                        echo "❌ Kafka 部署失败或被中止: ${e.message}"
+                                        currentBuild.result = 'UNSTABLE'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 并行执行所有组件，失败不影响其他组件
+                        parallel parallelStages
+                        
                     } else {
                         echo "使用顺序部署模式..."
+                        echo "使用顺序部署模式..."
+                        echo "⚠️  组件将依次部署，失败或拒绝会中止后续部署"
                         
                         if (params.DEPLOY_KUBERNETES) {
                             stage('部署 Kubernetes') {
@@ -306,7 +392,7 @@ pipeline {
     post {
         success {
             echo "=========================================="
-            echo "✅ 所有组件部署成功！"
+            echo "✅ 部署流水线执行完成！"
             echo "=========================================="
             script {
                 def deployed = []
@@ -322,11 +408,20 @@ pipeline {
                 if (params.DEPLOY_KAFKA) deployed.add("Kafka")
                 
                 echo "已部署组件: ${deployed.join(', ')}"
+                echo ""
+                echo "提示: 请查看各组件的具体部署状态"
             }
+        }
+        unstable {
+            echo "=========================================="
+            echo "⚠️  部分组件部署失败或被中止"
+            echo "=========================================="
+            echo "请查看上方日志，检查哪些组件部署失败"
+            echo "成功的组件不受影响"
         }
         failure {
             echo "=========================================="
-            echo "❌ 部署过程中出现错误！"
+            echo "❌ 部署流水线执行失败！"
             echo "=========================================="
             echo "请查看上方日志获取详细错误信息"
         }

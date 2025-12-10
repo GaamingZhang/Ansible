@@ -249,20 +249,43 @@ timeout(time: 30, unit: 'MINUTES') {
 }
 ```
 
-### 并行模式下的批准
+### 并行模式下的批准和部署
 
-⚠️ **注意**: 并行部署模式下，批准提示会依次出现，但部署会在所有批准完成后并行执行。
+✅ **新特性**: 并行部署模式下，每个组件完全独立：
 
 ```
 流程:
-1. 提示批准 Kubernetes    → 等待
-2. 批准 Kubernetes         → 提示批准 Prometheus
-3. 批准 Prometheus         → 提示批准 Grafana
-...
-10. 批准所有组件后          → 并行开始部署
+1. 所有组件同时启动
+2. 每个组件独立等待批准
+3. 批准后立即开始部署该组件
+4. 其他组件不受影响
+
+示例:
+├─ [Kubernetes]    ⏸️  等待批准...
+├─ [Prometheus]    ⏸️  等待批准...
+├─ [Grafana]       ⏸️  等待批准...
+└─ [Redis]         ⏸️  等待批准...
+
+批准 Grafana 后:
+├─ [Kubernetes]    ⏸️  等待批准...
+├─ [Prometheus]    ⏸️  等待批准...
+├─ [Grafana]       🚀 部署中... → ✅ 完成
+└─ [Redis]         ⏸️  等待批准...
+
+拒绝 Kubernetes:
+├─ [Kubernetes]    ❌ 已拒绝（不影响其他组件）
+├─ [Prometheus]    ⏸️  等待批准...
+├─ [Grafana]       ✅ 已完成
+└─ [Redis]         🚀 部署中...
 ```
 
-如果希望批准后立即部署，建议使用**顺序模式**。
+**关键优势**:
+- ✅ 每个组件独立批准和部署
+- ✅ 拒绝或失败不影响其他组件
+- ✅ 可以先批准快速部署的组件
+- ✅ 灵活控制部署节奏
+
+**顺序模式**: 组件依次执行，一个失败会中止后续所有组件。
 
 ## 流水线阶段说明
 
@@ -454,10 +477,63 @@ Playbook: playbook/Prometheus/deploy-prometheus.yml
 已部署组件: Kubernetes, Prometheus, Grafana, ...
 ```
 
-### 并行部署输出
+### 并行部署输出（独立批准）
 
 ```
 使用并行部署模式...
+✓ 每个组件独立批准和部署，互不影响
+
+[启动并行执行]
+- Kubernetes: 等待批准...
+- Prometheus: 等待批准...
+- Grafana: 等待批准...
+- GitLab: 等待批准...
+- Redis: 等待批准...
+- MySQL: 等待批准...
+
+[批准 Grafana]
+Input requested for Grafana
+✅ 已批准部署: Grafana
+→ 开始部署: Grafana
+...
+✓ Grafana 部署完成 (3m 42s)
+
+[批准 Redis]
+Input requested for Redis
+✅ 已批准部署: Redis
+→ 开始部署: Redis
+...
+✓ Redis 部署完成 (5m 18s)
+
+[拒绝 Kubernetes]
+Input requested for Kubernetes
+❌ Kubernetes 部署失败或被中止: User abort
+
+[批准 Prometheus]
+Input requested for Prometheus
+✅ 已批准部署: Prometheus
+→ 开始部署: Prometheus
+...
+✓ Prometheus 部署完成 (7m 05s)
+
+[批准剩余组件...]
+...
+
+==========================================
+⚠️  部分组件部署失败或被中止
+==========================================
+请查看上方日志，检查哪些组件部署失败
+成功的组件不受影响
+
+已部署组件: Prometheus, Grafana, Redis, MySQL, ...
+拒绝/失败: Kubernetes
+
+```
+
+### 顺序部署输出
+
+```
+使用顺序部署模式...
 
 [Kubernetes] → 开始部署
 [Prometheus] → 开始部署
@@ -573,6 +649,78 @@ sudo apt install -y ansible
 5. ✅ 使用防火墙限制访问
 6. ✅ 在 Ansible playbook 中使用 vault 加密敏感数据
 
+## 并行部署详细说明
+
+### 独立性保障
+
+并行模式通过以下机制确保组件独立：
+
+1. **独立的批准流程**
+   - 每个组件有自己的 `input` 步骤
+   - 批准/拒绝只影响该组件
+   - 可以任意顺序批准
+
+2. **异常隔离**
+   - 每个组件包装在 `try-catch` 中
+   - 失败组件标记为 `UNSTABLE`
+   - 不会抛出异常影响其他组件
+
+3. **状态管理**
+   - 使用 `currentBuild.result = 'UNSTABLE'`
+   - 构建状态显示为黄色（部分成功）
+   - 不会变成红色（失败）导致中止
+
+### 实际使用示例
+
+#### 场景 1: 选择性部署
+```
+目标: 只部署监控相关组件
+
+操作:
+1. 选择 DEPLOY_PROMETHEUS, DEPLOY_GRAFANA
+2. 选择 DEPLOYMENT_MODE: parallel
+3. 启动构建
+
+结果:
+- 同时显示两个批准提示
+- 可以先批准 Grafana（快速部署）
+- 再批准 Prometheus（需要更长时间）
+- 两者并行部署，互不等待
+```
+
+#### 场景 2: 拒绝特定组件
+```
+目标: 部署所有组件，但跳过 GitLab
+
+操作:
+1. 选择所有组件
+2. 选择 DEPLOYMENT_MODE: parallel
+3. 启动构建
+4. 批准其他所有组件
+5. 拒绝（Abort）GitLab
+
+结果:
+- GitLab 被标记为中止
+- 其他组件正常部署完成
+- 构建状态: UNSTABLE（黄色）
+- 可以后续单独部署 GitLab
+```
+
+#### 场景 3: 部分失败恢复
+```
+目标: 某些组件失败后继续部署其他
+
+操作:
+1. 选择所有组件并行部署
+2. Kubernetes 部署失败（网络问题）
+
+结果:
+- Kubernetes 标记为失败
+- 其他组件继续正常部署
+- 修复问题后重新运行，只选择 Kubernetes
+- 不需要重新部署成功的组件
+```
+
 ## 与 PostCommitDeploy 的区别
 
 | 特性 | DeployAll | PostCommitDeploy |
@@ -580,8 +728,11 @@ sudo apt install -y ansible
 | 触发方式 | 手动/定时 | Git 提交自动触发 |
 | 部署范围 | 可选择任意组件 | 只部署变更的组件 |
 | 部署模式 | 支持并行/顺序 | 仅顺序部署 |
+| 组件独立性 | 完全独立（并行模式） | 线性依赖 |
+| 失败处理 | 部分失败继续执行 | 失败即中止 |
 | 使用场景 | 全量部署/重建 | 增量更新 |
 | 参数配置 | 丰富的参数选项 | 自动检测变更 |
+| 批准控制 | 每个组件独立批准 | 按顺序批准 |
 
 ## 相关文档
 
