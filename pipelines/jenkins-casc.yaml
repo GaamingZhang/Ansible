@@ -1,0 +1,82 @@
+# Jenkins Configuration as Code
+# 存储在 GitLab,自动同步到 Jenkins
+
+jenkins:
+  systemMessage: "Jenkins configured automatically from GitLab"
+  numExecutors: 2
+  mode: NORMAL
+  
+  scmCheckoutRetryCount: 3
+  
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${JENKINS_ADMIN_PASSWORD}
+  
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - gitLabApiTokenImpl:
+              scope: GLOBAL
+              id: "gitlab-api-token"
+              apiToken: "${GITLAB_API_TOKEN}"
+              description: "GitLab API Token"
+          
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "ansible-ssh-key"
+              username: "node"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${ANSIBLE_SSH_PRIVATE_KEY}"
+              description: "Ansible SSH Key"
+
+unclassified:
+  gitLabConnectionConfig:
+    connections:
+      - name: "Local GitLab"
+        url: "http://192.168.31.50"
+        apiTokenId: "gitlab-api-token"
+        ignoreCertificateErrors: false
+        connectionTimeout: 10
+        readTimeout: 10
+
+jobs:
+  - script: |
+      multibranchPipelineJob('ansible-deployment') {
+        displayName('Ansible Infrastructure Deployment')
+        description('自动部署基础设施变更')
+        
+        branchSources {
+          git {
+            id('ansible-repo')
+            remote('http://192.168.31.50/gaamingzhang/ansible.git')
+            credentialsId('gitlab-api-token')
+          }
+        }
+        
+        factory {
+          workflowBranchProjectFactory {
+            scriptPath('Jenkinsfile')
+          }
+        }
+        
+        orphanedItemStrategy {
+          discardOldItems {
+            numToKeep(10)
+          }
+        }
+        
+        triggers {
+          periodicFolderTrigger {
+            interval('1m')
+          }
+        }
+      }

@@ -4,8 +4,9 @@
 # Jenkins 版本
 jenkins_version: "2.528.2"  # LTS 最新版本 (2025-12-09)
 
-# Java 版本
-java_version: "openjdk-17-jre"
+# Java 版本 (Jenkins 2.463+ 需要 Java 17 或 21)
+# 可选: openjdk-17-jre, openjdk-21-jre
+java_version: "openjdk-21-jre"
 
 # Jenkins 端口配置
 jenkins_http_port: 8080

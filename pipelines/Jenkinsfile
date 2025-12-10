@@ -1,0 +1,302 @@
+// Jenkins Pipeline for Ansible Infrastructure Deployment
+// 此文件存放在 GitLab: pipelines/Jenkinsfile
+// 当 main 分支有新提交时自动触发
+
+pipeline {
+    agent any
+    
+    environment {
+        ANSIBLE_HOST_KEY_CHECKING = 'False'
+        ANSIBLE_FORCE_COLOR = 'True'
+        ANSIBLE_CONFIG = "${WORKSPACE}/ansible.cfg"
+    }
+    
+    options {
+        // 构建保留策略
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // 超时时间
+        timeout(time: 1, unit: 'HOURS')
+        // 不允许并发构建
+        disableConcurrentBuilds()
+        // 时间戳
+        timestamps()
+    }
+    
+    stages {
+        stage('检出代码') {
+            steps {
+                echo "=== 从 GitLab 检出代码 ==="
+                checkout scm
+                sh 'git log -1 --pretty=format:"%h - %an: %s"'
+            }
+        }
+        
+        stage('检测变更') {
+            steps {
+                script {
+                    echo "=== 检测哪些 playbook 被修改 ==="
+                    
+                    // 获取变更的文件列表
+                    def changedFiles = ""
+                    try {
+                        changedFiles = sh(
+                            script: 'git diff --name-only HEAD~1 HEAD',
+                            returnStdout: true
+                        ).trim()
+                    } catch (Exception e) {
+                        // 首次提交时没有 HEAD~1，获取所有文件
+                        changedFiles = sh(
+                            script: 'git ls-files',
+                            returnStdout: true
+                        ).trim()
+                    }
+                    
+                    echo "变更的文件:\n${changedFiles}"
+                    
+                    // 设置部署标志
+                    env.DEPLOY_KUBERNETES = changedFiles.contains('playbook/kubernetes/') ? 'true' : 'false'
+                    env.DEPLOY_GITLAB = changedFiles.contains('playbook/GitLab/') ? 'true' : 'false'
+                    env.DEPLOY_JENKINS = changedFiles.contains('playbook/Jenkins/') ? 'true' : 'false'
+                    env.DEPLOY_PROMETHEUS = changedFiles.contains('playbook/Prometheus/') ? 'true' : 'false'
+                    env.DEPLOY_GRAFANA = changedFiles.contains('playbook/Grafana/') ? 'true' : 'false'
+                    env.DEPLOY_REDIS = changedFiles.contains('playbook/Redis/') ? 'true' : 'false'
+                    env.DEPLOY_MYSQL = changedFiles.contains('playbook/MySQL/') ? 'true' : 'false'
+                    env.DEPLOY_MONGODB = changedFiles.contains('playbook/MongoDB/') ? 'true' : 'false'
+                    env.DEPLOY_ELASTICSEARCH = changedFiles.contains('playbook/ElasticSearch/') ? 'true' : 'false'
+                    env.DEPLOY_KAFKA = changedFiles.contains('playbook/Kafka/') ? 'true' : 'false'
+                    
+                    echo """
+=== 部署计划 ===
+Kubernetes:    ${env.DEPLOY_KUBERNETES}
+GitLab:        ${env.DEPLOY_GITLAB}
+Jenkins:       ${env.DEPLOY_JENKINS}
+Prometheus:    ${env.DEPLOY_PROMETHEUS}
+Grafana:       ${env.DEPLOY_GRAFANA}
+Redis:         ${env.DEPLOY_REDIS}
+MySQL:         ${env.DEPLOY_MYSQL}
+MongoDB:       ${env.DEPLOY_MONGODB}
+ElasticSearch: ${env.DEPLOY_ELASTICSEARCH}
+Kafka:         ${env.DEPLOY_KAFKA}
+==================
+"""
+                }
+            }
+        }
+        
+        stage('验证配置') {
+            steps {
+                echo "=== 验证 Ansible 配置 ==="
+                sh '''
+                    # 检查 inventory 文件
+                    if [ ! -f inventory/hosts.ini ]; then
+                        echo "错误: inventory/hosts.ini 不存在"
+                        exit 1
+                    fi
+                    
+                    # 检查 ansible.cfg
+                    if [ ! -f ansible.cfg ]; then
+                        echo "错误: ansible.cfg 不存在"
+                        exit 1
+                    fi
+                    
+                    # 列出所有主机
+                    ansible all -i inventory/hosts.ini --list-hosts
+                '''
+            }
+        }
+        
+        stage('部署组件') {
+            parallel {
+                stage('部署 Kubernetes') {
+                    when {
+                        expression { env.DEPLOY_KUBERNETES == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 Kubernetes 集群 ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/kubernetes/deploy-k8s-cluster.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 GitLab') {
+                    when {
+                        expression { env.DEPLOY_GITLAB == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 GitLab ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/GitLab/deploy-gitlab.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 Jenkins') {
+                    when {
+                        expression { env.DEPLOY_JENKINS == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 Jenkins ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Jenkins/deploy-jenkins.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 Prometheus') {
+                    when {
+                        expression { env.DEPLOY_PROMETHEUS == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 Prometheus 监控系统 ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                # 部署 Prometheus
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Prometheus/deploy-prometheus.yml \
+                                    -v
+                                
+                                # 部署 Node Exporter
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Prometheus/deploy-node-exporter-all.yml \
+                                    -v
+                                
+                                # 更新配置
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Prometheus/update-prometheus-config.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 Grafana') {
+                    when {
+                        expression { env.DEPLOY_GRAFANA == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 Grafana ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Grafana/deploy-grafana.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 Redis') {
+                    when {
+                        expression { env.DEPLOY_REDIS == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 Redis 集群 ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Redis/deploy-redis-cluster.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 MySQL') {
+                    when {
+                        expression { env.DEPLOY_MYSQL == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 MySQL ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/MySQL/deploy-mysql.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 MongoDB') {
+                    when {
+                        expression { env.DEPLOY_MONGODB == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 MongoDB ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/MongoDB/deploy-mongodb.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 ElasticSearch') {
+                    when {
+                        expression { env.DEPLOY_ELASTICSEARCH == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 ElasticSearch ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/ElasticSearch/deploy-elasticsearch.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+                
+                stage('部署 Kafka') {
+                    when {
+                        expression { env.DEPLOY_KAFKA == 'true' }
+                    }
+                    steps {
+                        echo "=== 部署 Kafka ==="
+                        sshagent(['ansible-ssh-key']) {
+                            sh '''
+                                ansible-playbook -i inventory/hosts.ini \
+                                    playbook/Kafka/deploy-kafka.yml \
+                                    -v
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ 部署成功完成!'
+            // 可以添加通知，如邮件、Slack 等
+        }
+        failure {
+            echo '❌ 部署失败!'
+            // 可以添加告警通知
+        }
+        always {
+            echo '=== 清理工作区 ==='
+            cleanWs(
+                deleteDirs: true,
+                disableDeferredWipeout: true,
+                patterns: [[pattern: '.git', type: 'EXCLUDE']]
+            )
+        }
+    }
+}
