@@ -2,16 +2,36 @@
 
 此指南详细说明如何创建一个由 GitLab 存储配置并在 main 分支提交时自动触发的 Jenkins 流水线。
 
+## 架构说明
+
+本方案采用三台服务器分离架构：
+
+- **Jenkins 服务器**: `192.168.31.70` - 负责流水线调度和任务触发
+- **Ansible 控制节点**: `192.168.31.10` - 负责执行实际的部署任务
+- **GitLab 服务器**: `192.168.31.50` - 存储代码和流水线配置
+
+工作流程：
+1. 开发者提交代码到 GitLab (`git@192.168.31.50:gaamingzhang/ansible.git`)
+2. GitLab Webhook 触发 Jenkins (`192.168.31.70`)
+3. Jenkins 通过 SSH 连接到 Ansible 控制节点 (`192.168.31.10`)
+4. Ansible 控制节点执行部署任务到目标服务器
+
 ## 目录结构
 
 ```
-ansible/
+ansible/                                 # GitLab 仓库根目录
 ├── pipelines/
 │   ├── Jenkinsfile                      # Jenkins 流水线定义
+│   ├── PostCommitDeploy.Jenkinsfile     # 提交触发的部署流水线
 │   ├── jenkins-casc.yaml                # Jenkins 配置即代码
 │   └── JENKINS-PIPELINE-SETUP.md        # 本文档
 ├── playbook/                            # Ansible playbooks
+│   ├── kubernetes/                      # K8s 部署
+│   ├── GitLab/                          # GitLab 部署
+│   ├── Prometheus/                      # 监控部署
+│   └── ...
 ├── inventory/                           # 主机清单
+│   └── hosts.ini
 └── ansible.cfg                          # Ansible 配置
 ```
 
@@ -48,18 +68,54 @@ java -jar /var/cache/jenkins/war/WEB-INF/jenkins-cli.jar -s http://localhost:808
 sudo systemctl restart jenkins
 ```
 
-### 2. 确认 Ansible 已安装
+### 2. 确认 Ansible 控制节点配置
 
-在 Jenkins 服务器上:
+在 Ansible 控制节点 (`192.168.31.10`) 上确认配置：
+
 ```bash
-ssh node@192.168.31.70
+# 从 Jenkins 服务器 SSH 到 Ansible 控制节点
+ssh node@192.168.31.10
+
+# 确认 Ansible 已安装
 ansible --version
+
+# 确认项目路径存在
+cd /home/node/ansible
+ls -la
+
+# 测试 Ansible 连接目标主机
+ansible all -i inventory/hosts.ini -m ping
 ```
 
-如果未安装:
+如果 Ansible 未安装：
 ```bash
+ssh node@192.168.31.10
 sudo apt update
-sudo apt install -y ansible
+sudo apt install -y ansible git
+```
+
+### 3. 配置 Jenkins 到 Ansible 控制节点的 SSH 访问
+
+在 Jenkins 服务器 (`192.168.31.70`) 上：
+
+```bash
+# 切换到 jenkins 用户
+sudo su - jenkins
+
+# 生成 SSH 密钥（如果没有）
+ssh-keygen -t rsa -b 4096 -C "jenkins@192.168.31.70" -f ~/.ssh/id_rsa -N ""
+
+# 复制公钥到 Ansible 控制节点
+ssh-copy-id node@192.168.31.10
+
+# 测试连接
+ssh node@192.168.31.10 "hostname && ansible --version"
+```
+
+将 Ansible 控制节点添加到 known_hosts：
+```bash
+sudo su - jenkins
+ssh-keyscan 192.168.31.10 >> ~/.ssh/known_hosts
 ```
 
 ## 步骤 1: 在 GitLab 创建 Personal Access Token
@@ -103,31 +159,66 @@ chmod 600 /tmp/gitlab-token.txt
    - **Description**: `GitLab API Token for ansible project`
 4. 点击 **Create**
 
-### 2.2 添加 Ansible SSH 私钥
+### 2.2 添加 Jenkins 到 Ansible 控制节点的 SSH 凭据
 
-1. 获取 Ansible 控制节点的 SSH 私钥:
+1. 在 Jenkins 服务器上获取 jenkins 用户的私钥:
 ```bash
-cat ~/.ssh/id_rsa
+# 在 Jenkins 服务器 (192.168.31.70) 上执行
+sudo cat /var/lib/jenkins/.ssh/id_rsa
 ```
 
-2. 在 Jenkins 添加凭据:
+2. 在 Jenkins Web 界面添加凭据:
    - 访问: http://192.168.31.70:8080/manage/credentials/store/system/domain/_/
    - 点击 **Add Credentials**
    - 配置:
      - **Kind**: `SSH Username with private key`
      - **Scope**: `Global`
-     - **ID**: `ansible-ssh-key`
-     - **Description**: `Ansible SSH Key for Infrastructure`
+     - **ID**: `ansible-control-node-ssh`
+     - **Description**: `SSH Key for Ansible Control Node (192.168.31.10)`
      - **Username**: `node`
      - **Private Key**: 选择 `Enter directly`
-     - 点击 **Add** 按钮,粘贴私钥内容
+     - 点击 **Add** 按钮，粘贴私钥内容
    - 点击 **Create**
 
-### 2.3 验证凭据
+### 2.3 添加 GitLab SSH 私钥（用于拉取代码）
 
+1. 在 Ansible 控制节点生成 SSH 密钥并添加到 GitLab:
 ```bash
-# 在 Jenkins 服务器上测试 SSH
-ssh -i ~/.ssh/id_rsa node@192.168.31.30 "echo SSH connection successful"
+# 在 Ansible 控制节点 (192.168.31.10) 上执行
+ssh node@192.168.31.10
+
+# 生成密钥（如果没有）
+ssh-keygen -t rsa -b 4096 -C "ansible@192.168.31.10" -f ~/.ssh/id_rsa -N ""
+
+# 查看公钥
+cat ~/.ssh/id_rsa.pub
+```
+
+2. 将公钥添加到 GitLab:
+   - 登录 GitLab: http://192.168.31.50
+   - 进入项目: `gaamingzhang/ansible`
+   - 点击 **Settings** → **Repository** → **Deploy Keys**
+   - 点击 **Add new key**
+   - **Title**: `Ansible Control Node`
+   - **Key**: 粘贴公钥内容
+   - ✓ **Grant write permissions** (如果需要)
+   - 点击 **Add key**
+
+3. 或者添加到用户的 SSH Keys（全局访问）:
+   - 点击右上角头像 → **Preferences** → **SSH Keys**
+   - 点击 **Add new key**
+   - 粘贴公钥，点击 **Add key**
+
+4. 测试 GitLab SSH 连接:
+```bash
+# 在 Ansible 控制节点上
+ssh -T git@192.168.31.50
+# 应该看到: Welcome to GitLab, @username!
+
+# 测试克隆仓库
+cd /tmp
+git clone git@192.168.31.50:gaamingzhang/ansible.git test-clone
+rm -rf test-clone
 ```
 
 ## 步骤 3: 配置 GitLab 连接
@@ -166,17 +257,21 @@ ssh -i ~/.ssh/id_rsa node@192.168.31.30 "echo SSH connection successful"
 
 1. 点击 **Add source** → **Git**
 2. 配置:
-   - **Project Repository**: `http://192.168.31.50/gaamingzhang/ansible.git`
-   - **Credentials**: 选择 `gitlab-api-token`
+   - **Project Repository**: `git@192.168.31.50:gaamingzhang/ansible.git`
+   - **Credentials**: 选择 `gitlab-api-token` （用于 HTTP 访问）或配置 SSH 凭据
    - **Behaviors**:
      - 点击 **Add** → **Discover branches**
        - **Strategy**: `All branches`
      - 点击 **Add** → **Filter by name (with regular expression)**
-       - **Regular expression**: `main|dev` (只监控 main 和 dev 分支)
+       - **Regular expression**: `main` (只监控 main 分支)
+     - 点击 **Add** → **Clean before checkout**
+     - 点击 **Add** → **Clean after checkout**
 
 #### Build Configuration 部分:
 - **Mode**: `by Jenkinsfile`
-- **Script Path**: `pipelines/Jenkinsfile`
+- **Script Path**: `pipelines/PostCommitDeploy.Jenkinsfile`
+
+> **说明**: 使用 `PostCommitDeploy.Jenkinsfile` 专门处理 main 分支提交后的自动部署
 
 #### Scan Multibranch Pipeline Triggers 部分:
 - ✓ **Periodically if not otherwise run**
@@ -235,17 +330,32 @@ http://192.168.31.70:8080/project/ansible-infrastructure-deployment
 
 ### 6.2 测试自动触发
 
+在 Ansible 控制节点 (`192.168.31.10`) 或任何有权限的机器上：
+
 ```bash
-cd /home/node/ansible
+# 克隆仓库（如果还没有）
+git clone git@192.168.31.50:gaamingzhang/ansible.git
+cd ansible
+
+# 确保在 main 分支
+git checkout main
+git pull origin main
 
 # 修改一个文件
-echo "# Test Jenkins pipeline" >> README.md
+echo "# Test Jenkins pipeline - $(date)" >> README.md
 
-# 提交并推送
+# 提交并推送到 main 分支
 git add README.md
-git commit -m "test: trigger Jenkins pipeline"
+git commit -m "test: trigger Jenkins pipeline on main branch"
 git push origin main
 ```
+
+**预期行为**:
+1. GitLab 接收到 push 到 main 分支
+2. GitLab Webhook 自动触发 Jenkins
+3. Jenkins 在 1 分钟内开始构建
+4. 流水线检测变更的文件
+5. 如果 playbook 目录有变更，自动执行相应的部署
 
 ### 6.3 查看构建日志
 
@@ -255,14 +365,20 @@ git push origin main
 
 应该看到:
 ```
-=== 从 GitLab 检出代码 ===
-=== 检测哪些 playbook 被修改 ===
-变更的文件:
-README.md
-=== 部署计划 ===
-Kubernetes:    false
-GitLab:        false
-...
+[Pipeline] stage (从 GitLab 检出代码)
+Cloning repository git@192.168.31.50:gaamingzhang/ansible.git
+
+[Pipeline] stage (连接到 Ansible 控制节点)
+SSH to node@192.168.31.10
+
+[Pipeline] stage (检测变更的 Playbook)
+Detecting changed files in playbooks/...
+Changed files:
+  playbook/Prometheus/README.md
+
+[Pipeline] stage (部署变更的组件)
+Deploying Prometheus...
+Running: ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml
 ```
 
 ## 步骤 7: 测试组件部署
@@ -270,32 +386,60 @@ GitLab:        false
 ### 7.1 修改 Prometheus playbook 触发部署
 
 ```bash
-cd /home/node/ansible
+# 在任意有权限的机器上
+cd ansible  # 你的本地仓库
 
 # 修改 Prometheus 配置
-echo "# test deployment" >> playbook/Prometheus/README.md
+echo "# Update monitoring config - $(date)" >> playbook/Prometheus/README.md
 
-# 提交
+# 提交到 main 分支
 git add playbook/Prometheus/README.md
-git commit -m "feat: update Prometheus config"
+git commit -m "feat: update Prometheus monitoring config"
 git push origin main
 ```
 
-### 7.2 观察 Jenkins 执行
+### 7.2 观察 Jenkins 执行流程
 
-1. GitLab Webhook 触发 Jenkins
-2. Jenkins 检测到 `playbook/Prometheus/` 变更
-3. 只执行 Prometheus 部署阶段
-4. 其他组件被跳过
+1. **GitLab 触发**: Webhook 立即触发 Jenkins
+2. **Jenkins 执行**:
+   - 从 GitLab 克隆最新代码
+   - SSH 连接到 Ansible 控制节点 (`192.168.31.10`)
+   - 检测到 `playbook/Prometheus/` 目录有变更
+   - 在 Ansible 控制节点上执行部署命令
+3. **Ansible 部署**: 
+   - Ansible 控制节点连接到 Prometheus 目标服务器
+   - 执行部署任务
 
 查看日志应该显示:
 ```
-=== 部署计划 ===
-Prometheus:    true
-(其他都是 false)
+=== 检测变更的 Playbook ===
+检测到变更: playbook/Prometheus/
+部署标志: DEPLOY_PROMETHEUS=true
 
-=== 部署 Prometheus 监控系统 ===
+=== 连接到 Ansible 控制节点 ===
+SSH: node@192.168.31.10
+
+=== 在 Ansible 控制节点执行部署 ===
+cd /home/node/ansible
 ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml
+
+PLAY [部署 Prometheus] **********************
+TASK [Gathering Facts] **********************
+ok: [prometheus-server]
+...
+PLAY RECAP **********************************
+prometheus-server : ok=15 changed=3
+```
+
+### 7.3 验证部署结果
+
+```bash
+# 在 Ansible 控制节点上验证
+ssh node@192.168.31.10
+cd /home/node/ansible
+
+# 手动检查 Prometheus 状态
+ansible prometheus_cluster -i inventory/hosts.ini -m shell -a "systemctl status prometheus" -b
 ```
 
 ## 工作流程图
@@ -303,61 +447,104 @@ ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.ym
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  开发者推送代码到 GitLab main 分支                                │
+│  git push origin main                                           │
+│  GitLab Server: 192.168.31.50                                  │
 └────────────────────┬────────────────────────────────────────────┘
-                     │
+                     │ Webhook
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  GitLab Webhook 触发 Jenkins                                     │
-│  URL: http://192.168.31.70:8080/project/ansible-infra...        │
+│  POST http://192.168.31.70:8080/project/ansible-infra...        │
+│  Jenkins Server: 192.168.31.70                                  │
 └────────────────────┬────────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Jenkins 从 GitLab 拉取最新代码                                  │
-│  git clone http://192.168.31.50/gaamingzhang/ansible.git        │
+│  git clone git@192.168.31.50:gaamingzhang/ansible.git          │
+│  读取: pipelines/PostCommitDeploy.Jenkinsfile                   │
 └────────────────────┬────────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  读取 pipelines/Jenkinsfile                                      │
+│  Jenkins SSH 连接到 Ansible 控制节点                             │
+│  ssh node@192.168.31.10                                         │
+│  Ansible Control Node: 192.168.31.10                           │
 └────────────────────┬────────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  检测变更: git diff --name-only HEAD~1 HEAD                      │
+│  在 Ansible 控制节点检测变更                                      │
+│  cd /home/node/ansible                                          │
+│  git diff --name-only HEAD~1 HEAD                              │
+│  检测 playbook/* 目录的变更                                       │
 └────────────────────┬────────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  设置部署标志                                                     │
-│  DEPLOY_KUBERNETES=false                                        │
-│  DEPLOY_PROMETHEUS=true  (如果 playbook/Prometheus/ 变更)       │
-│  DEPLOY_GRAFANA=false                                           │
+│  if playbook/Kubernetes/* changed  → DEPLOY_K8S=true           │
+│  if playbook/Prometheus/* changed  → DEPLOY_PROMETHEUS=true    │
+│  if playbook/GitLab/* changed      → DEPLOY_GITLAB=true        │
 │  ...                                                            │
 └────────────────────┬────────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  并行执行部署 (只运行标志为 true 的)                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Kubernetes   │  │ Prometheus   │  │ Grafana      │          │
-│  │ (跳过)       │  │ (执行)       │  │ (跳过)       │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│  在 Ansible 控制节点执行部署 (只部署变更的组件)                    │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ if DEPLOY_PROMETHEUS=true                                │  │
+│  │   ansible-playbook -i inventory/hosts.ini \              │  │
+│  │     playbook/Prometheus/deploy-prometheus.yml            │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  Ansible Control Node: 192.168.31.10                           │
+└────────────────────┬────────────────────────────────────────────┘
+                     │ SSH to target servers
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Ansible 连接目标服务器执行任务                                   │
+│  - Prometheus Server                                            │
+│  - Grafana Server                                               │
+│  - Kubernetes Cluster                                           │
+│  - Database Servers                                             │
+│  - ...                                                          │
 └────────────────────┬────────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  使用 SSH 密钥执行 Ansible                                        │
-│  sshagent(['ansible-ssh-key']) {                                │
-│    ansible-playbook -i inventory/hosts.ini ...                  │
-│  }                                                              │
-└────────────────────┬────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  部署完成,发送通知 (可选)                                         │
-│  ✅ Success 或 ❌ Failure                                        │
+│  部署完成，Jenkins 显示结果                                       │
+│  ✅ Success: 组件部署成功                                         │
+│  ❌ Failure: 部署失败，查看日志                                   │
+│  ⏭️  Skipped: 无变更，跳过部署                                   │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+## 数据流和连接关系
+
+```
+GitLab (192.168.31.50)
+  ├─ 存储代码仓库: git@192.168.31.50:gaamingzhang/ansible.git
+  ├─ 包含 Jenkinsfile: pipelines/PostCommitDeploy.Jenkinsfile
+  └─ Webhook 触发 → Jenkins
+
+Jenkins (192.168.31.70)
+  ├─ 监听 GitLab Webhook
+  ├─ 读取 Jenkinsfile 并执行流水线
+  ├─ SSH 连接 → Ansible 控制节点 (使用凭据: ansible-control-node-ssh)
+  └─ 显示部署结果和日志
+
+Ansible 控制节点 (192.168.31.10)
+  ├─ 接收 Jenkins SSH 连接
+  ├─ 克隆/更新 GitLab 仓库
+  ├─ 执行 ansible-playbook 命令
+  └─ SSH 连接 → 目标服务器群
+
+目标服务器群
+  ├─ Kubernetes 集群
+  ├─ 监控服务器 (Prometheus, Grafana)
+  ├─ 数据库服务器 (MySQL, MongoDB, Redis)
+  ├─ 应用服务器 (GitLab, Jenkins, Kafka)
+  └─ 接收 Ansible 部署任务
 ```
 
 ## 高级配置
@@ -412,71 +599,169 @@ post {
 
 **解决**:
 ```bash
-# 在 Jenkins 服务器测试连接
+# 在 Jenkins 服务器 (192.168.31.70) 测试连接
 ssh node@192.168.31.70
 curl http://192.168.31.50/api/v4/projects
+
+# 测试 SSH 连接
+ssh -T git@192.168.31.50
 
 # 检查防火墙
 sudo ufw status
 sudo ufw allow from 192.168.31.70 to any port 80
+sudo ufw allow from 192.168.31.70 to any port 22
 ```
 
-### 问题 2: SSH 认证失败
+### 问题 2: Jenkins 无法 SSH 到 Ansible 控制节点
 
-**症状**: Ansible 无法连接目标主机
+**症状**: SSH 连接失败
 
 **解决**:
 ```bash
-# 验证 SSH 密钥
-ssh node@192.168.31.70
-ssh -i ~/.ssh/id_rsa node@192.168.31.30 "echo test"
+# 在 Jenkins 服务器测试连接
+sudo su - jenkins
+ssh node@192.168.31.10 "hostname"
 
-# 添加主机到 known_hosts
-ssh-keyscan 192.168.31.30 >> ~/.ssh/known_hosts
+# 如果失败，重新配置
+ssh-keyscan 192.168.31.10 >> ~/.ssh/known_hosts
+ssh-copy-id node@192.168.31.10
+
+# 检查 Ansible 控制节点的 SSH 服务
+ssh node@192.168.31.10
+sudo systemctl status ssh
 ```
 
-### 问题 3: Webhook 未触发
+### 问题 3: Ansible 控制节点无法拉取 GitLab 代码
+
+**症状**: git clone 失败
+
+**解决**:
+```bash
+# 在 Ansible 控制节点 (192.168.31.10) 上
+ssh node@192.168.31.10
+
+# 测试 SSH 连接到 GitLab
+ssh -T git@192.168.31.50
+
+# 添加 GitLab 到 known_hosts
+ssh-keyscan 192.168.31.50 >> ~/.ssh/known_hosts
+
+# 验证 SSH 密钥已添加到 GitLab
+cat ~/.ssh/id_rsa.pub
+# 复制公钥并在 GitLab 中检查是否已添加
+```
+
+### 问题 4: Webhook 未触发
 
 **症状**: 推送代码后 Jenkins 没有构建
 
 **解决**:
 1. 检查 GitLab Webhook 日志:
    - Settings → Webhooks → Edit → Recent events
-2. 验证 Jenkins URL 可访问:
+   - 查看响应码和错误信息
+
+2. 验证 Jenkins URL 可从 GitLab 访问:
    ```bash
-   curl http://192.168.31.70:8080/project/ansible-infrastructure-deployment
+   # 在 GitLab 服务器 (192.168.31.50) 上测试
+   ssh node@192.168.31.50
+   curl -I http://192.168.31.70:8080/project/ansible-infrastructure-deployment
    ```
-3. 检查 Jenkins 日志:
+
+3. 检查防火墙规则:
    ```bash
+   # 在 Jenkins 服务器上
+   sudo ufw allow from 192.168.31.50 to any port 8080
+   ```
+
+4. 检查 Jenkins 日志:
+   ```bash
+   ssh node@192.168.31.70
    sudo journalctl -u jenkins -f
+   sudo tail -f /var/log/jenkins/jenkins.log
    ```
 
-### 问题 4: 并行执行失败
+### 问题 5: Ansible 执行失败
 
-**症状**: 某些 stage 执行失败
+**症状**: 流水线执行到 Ansible 阶段失败
 
 **解决**:
-- 检查资源限制 (CPU/内存)
-- 查看 Ansible 日志
-- 在 Jenkinsfile 中添加 `failFast: false` 允许其他 stage 继续
+```bash
+# 在 Ansible 控制节点手动测试
+ssh node@192.168.31.10
+cd /home/node/ansible
+
+# 测试 inventory 连接
+ansible all -i inventory/hosts.ini -m ping
+
+# 手动执行 playbook
+ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml -v
+
+# 检查目标主机连接
+ansible prometheus_cluster -i inventory/hosts.ini -m shell -a "hostname" -b
+```
+
+### 问题 6: 权限问题
+
+**症状**: Permission denied
+
+**解决**:
+```bash
+# 确保 Ansible 控制节点的项目目录权限正确
+ssh node@192.168.31.10
+sudo chown -R node:node /home/node/ansible
+chmod 755 /home/node/ansible
+
+# 确保 SSH 密钥权限正确
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_rsa
+chmod 644 ~/.ssh/id_rsa.pub
+```
 
 ## 安全建议
 
-1. ✅ 使用 HTTPS 连接 GitLab (如果可能)
-2. ✅ 定期轮换 API Token
-3. ✅ 限制 Jenkins 用户权限
-4. ✅ 使用 Role-Based Access Control
-5. ✅ 审计构建日志
+1. ✅ 使用 SSH 密钥认证，而非密码
+2. ✅ 定期轮换 GitLab API Token 和 SSH 密钥
+3. ✅ 限制 Jenkins 用户权限和流水线访问权限
+4. ✅ 使用 Role-Based Access Control (RBAC)
+5. ✅ 审计构建日志，监控异常访问
 6. ✅ 启用 Jenkins CSRF 保护
-7. ✅ 定期备份 Jenkins 配置
+7. ✅ 定期备份 Jenkins 配置和 Ansible 控制节点数据
+8. ✅ 使用防火墙限制服务器间的访问：
+   - GitLab (192.168.31.50) → Jenkins (192.168.31.70): 允许 Webhook
+   - Jenkins (192.168.31.70) → Ansible (192.168.31.10): 允许 SSH
+   - Jenkins (192.168.31.70) → GitLab (192.168.31.50): 允许 Git 克隆
+   - Ansible (192.168.31.10) → 目标服务器: 允许 SSH
+9. ✅ 在 Ansible 控制节点上定期更新代码和依赖
+10. ✅ 使用 Jenkins 凭据管理，不要在代码中硬编码密钥
 
 ## 监控和维护
+
+### 定期检查服务状态
+
+```bash
+# 检查 Jenkins 服务
+ssh node@192.168.31.70
+sudo systemctl status jenkins
+df -h /var/lib/jenkins
+
+# 检查 Ansible 控制节点
+ssh node@192.168.31.10
+df -h /home/node
+cd /home/node/ansible && git status
+
+# 检查 GitLab 服务
+ssh node@192.168.31.50
+sudo gitlab-ctl status
+```
 
 ### 查看流水线历史
 
 ```bash
-# 访问 Blue Ocean 界面 (更友好)
+# 访问 Blue Ocean 界面 (更友好的可视化)
 http://192.168.31.70:8080/blue/organizations/jenkins/ansible-infrastructure-deployment/
+
+# 或传统界面
+http://192.168.31.70:8080/job/ansible-infrastructure-deployment/
 ```
 
 ### 清理旧构建
@@ -485,25 +770,87 @@ http://192.168.31.70:8080/blue/organizations/jenkins/ansible-infrastructure-depl
 - **Discard old builds**: 保留最近 10 次构建
 - **Days to keep builds**: 30 天
 
-### 定期检查
+### 手动清理
 
 ```bash
-# 每周检查 Jenkins 磁盘空间
+# 在 Jenkins 服务器清理旧工作区
 ssh node@192.168.31.70
-df -h /var/lib/jenkins
+sudo find /var/lib/jenkins/workspace -mtime +30 -type f -delete
 
-# 清理旧工作区
-sudo find /var/lib/jenkins/workspace -mtime +30 -delete
+# 在 Ansible 控制节点清理旧日志
+ssh node@192.168.31.10
+find /home/node/ansible/logs -mtime +30 -type f -delete
+```
+
+### 备份关键数据
+
+```bash
+# 备份 Jenkins 配置
+ssh node@192.168.31.70
+sudo tar -czf /backup/jenkins-config-$(date +%Y%m%d).tar.gz /var/lib/jenkins/
+
+# 备份 Ansible 控制节点
+ssh node@192.168.31.10
+tar -czf /backup/ansible-$(date +%Y%m%d).tar.gz /home/node/ansible/
 ```
 
 ## 总结
 
-现在你有一个完整的 CI/CD 流程:
+现在你有一个完整的三层分离架构 CI/CD 流程:
 
-✅ Jenkinsfile 存储在 GitLab (`pipelines/Jenkinsfile`)
-✅ 推送到 main 分支自动触发部署
-✅ 智能检测变更,只部署修改的组件
-✅ 并行执行,提高效率
-✅ 完整的日志和通知
+### 架构优势
 
-访问 Jenkins 查看流水线: http://192.168.31.70:8080/job/ansible-infrastructure-deployment/
+✅ **代码管理**: GitLab (192.168.31.50) 统一存储所有配置
+✅ **流水线调度**: Jenkins (192.168.31.70) 负责任务触发和监控
+✅ **部署执行**: Ansible 控制节点 (192.168.31.10) 专注于执行部署
+✅ **职责分离**: 各服务器各司其职，提高安全性和可维护性
+✅ **自动触发**: 提交到 main 分支自动触发部署
+✅ **智能检测**: 只部署变更的 playbook 组件
+✅ **并行执行**: 多个组件可同时部署，提高效率
+✅ **完整日志**: 从触发到部署的全链路日志追踪
+
+### 工作流程回顾
+
+1. **开发**: 在本地或任意机器修改 ansible 仓库
+2. **提交**: `git push origin main` 推送到 GitLab
+3. **触发**: GitLab Webhook 自动通知 Jenkins
+4. **读取**: Jenkins 读取 `pipelines/PostCommitDeploy.Jenkinsfile`
+5. **连接**: Jenkins SSH 到 Ansible 控制节点
+6. **检测**: 在 Ansible 控制节点检测 playbook 变更
+7. **部署**: Ansible 执行变更的组件部署
+8. **完成**: Jenkins 显示部署结果
+
+### 快速访问链接
+
+- **GitLab**: http://192.168.31.50
+  - 仓库: http://192.168.31.50/gaamingzhang/ansible
+- **Jenkins**: http://192.168.31.70:8080
+  - 流水线: http://192.168.31.70:8080/job/ansible-infrastructure-deployment/
+  - Blue Ocean: http://192.168.31.70:8080/blue/
+- **Ansible 控制节点**: `ssh node@192.168.31.10`
+  - 项目路径: `/home/node/ansible`
+
+### 下一步
+
+1. 根据需要调整 `pipelines/PostCommitDeploy.Jenkinsfile`
+2. 添加更多 playbook 组件的检测和部署逻辑
+3. 配置邮件或 Slack 通知
+4. 设置定期备份策略
+5. 监控各服务器的资源使用情况
+
+### 常用命令
+
+```bash
+# 测试流水线
+cd /path/to/ansible
+git commit --allow-empty -m "test: trigger pipeline"
+git push origin main
+
+# 查看 Jenkins 日志
+ssh node@192.168.31.70 "sudo journalctl -u jenkins -f"
+
+# 在 Ansible 控制节点手动部署
+ssh node@192.168.31.10
+cd /home/node/ansible
+ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml
+```
