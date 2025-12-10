@@ -80,6 +80,7 @@ prometheus_url: "http://192.168.31.80:9090"
 - 统计面板：
   - 总节点数
   - 在线节点数
+  - 离线节点列表（显示不在线虚拟机的名称）
   - 平均 CPU 使用率
   - 平均内存使用率
 
@@ -135,6 +136,17 @@ Grafana 支持从 https://grafana.com/grafana/dashboards/ 导入仪表板：
 * on(instance) group_left(nodename) node_uname_info{job="all_nodes"}
 ```
 图例格式: `{{nodename}} ({{instance}})`
+
+**离线节点检测**：
+```promql
+label_replace(up{job="all_nodes"} == 0, "nodename", "$1", "instance", "([^:]+):.*") 
+* on(instance) group_left(nodename) node_uname_info{job="all_nodes"}
+```
+说明: 
+- 查询所有 `up` 值为 0 的节点（离线节点）
+- 自动提取并显示节点名称
+- 如果所有节点在线，面板显示"全部在线"
+- 如果有节点离线，列出所有离线节点的名称
 
 **磁盘使用率**：
 ```promql
