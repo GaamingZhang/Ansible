@@ -1,15 +1,40 @@
 // Jenkins Pipeline 配置
-// 文件: Jenkinsfile
+// 文件: PostCommitDeploy.Jenkinsfile
+// 说明: 通过 SSH 连接到 Ansible 控制节点执行部署
 
 pipeline {
     agent any
     
     environment {
+        ANSIBLE_CONTROL_NODE = '192.168.31.10'
+        ANSIBLE_USER = 'node'
+        ANSIBLE_PROJECT_DIR = '/home/node/ansible'
         ANSIBLE_HOST_KEY_CHECKING = 'False'
         ANSIBLE_FORCE_COLOR = 'True'
     }
     
     stages {
+        stage('连接 Ansible 控制节点') {
+            steps {
+                echo "=========================================="
+                echo "连接到 Ansible 控制节点: ${ANSIBLE_CONTROL_NODE}"
+                echo "用户: ${ANSIBLE_USER}"
+                echo "项目目录: ${ANSIBLE_PROJECT_DIR}"
+                echo "=========================================="
+                
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            echo "成功连接到 Ansible 控制节点"
+                            hostname
+                            whoami
+                            ansible --version
+                        '
+                    """
+                }
+            }
+        }
+        
         stage('检测变更') {
             steps {
                 script {
@@ -43,7 +68,15 @@ pipeline {
             }
             steps {
                 echo "部署 Kubernetes 集群..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/kubernetes/deploy-k8s-cluster.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/kubernetes/deploy-k8s-cluster.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -53,7 +86,15 @@ pipeline {
             }
             steps {
                 echo "部署 GitLab..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/GitLab/deploy-gitlab.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/GitLab/deploy-gitlab.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -63,7 +104,15 @@ pipeline {
             }
             steps {
                 echo "部署 Jenkins..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Jenkins/deploy-jenkins.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/Jenkins/deploy-jenkins.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -73,9 +122,17 @@ pipeline {
             }
             steps {
                 echo "部署 Prometheus 监控..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml'
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-node-exporter-all.yml'
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Prometheus/update-prometheus-config.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-prometheus.yml
+                            ansible-playbook -i inventory/hosts.ini playbook/Prometheus/deploy-node-exporter-all.yml
+                            ansible-playbook -i inventory/hosts.ini playbook/Prometheus/update-prometheus-config.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -85,7 +142,15 @@ pipeline {
             }
             steps {
                 echo "部署 Grafana..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Grafana/deploy-grafana.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/Grafana/deploy-grafana.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -95,7 +160,15 @@ pipeline {
             }
             steps {
                 echo "部署 Redis 集群..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Redis/deploy-redis-cluster.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/Redis/deploy-redis-cluster.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -105,7 +178,15 @@ pipeline {
             }
             steps {
                 echo "部署 MySQL..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/MySQL/deploy-mysql.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/MySQL/deploy-mysql.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -115,7 +196,15 @@ pipeline {
             }
             steps {
                 echo "部署 MongoDB..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/MongoDB/deploy-mongodb.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/MongoDB/deploy-mongodb.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -125,7 +214,15 @@ pipeline {
             }
             steps {
                 echo "部署 ElasticSearch..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/ElasticSearch/deploy-elasticsearch.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/ElasticSearch/deploy-elasticsearch.yml
+                        '
+                    """
+                }
             }
         }
         
@@ -135,7 +232,15 @@ pipeline {
             }
             steps {
                 echo "部署 Kafka..."
-                sh 'ansible-playbook -i inventory/hosts.ini playbook/Kafka/deploy-kafka.yml'
+                sshagent(['ansible-control-node-ssh']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${ANSIBLE_USER}@${ANSIBLE_CONTROL_NODE} '
+                            cd ${ANSIBLE_PROJECT_DIR}
+                            git pull origin main
+                            ansible-playbook -i inventory/hosts.ini playbook/Kafka/deploy-kafka.yml
+                        '
+                    """
+                }
             }
         }
     }
