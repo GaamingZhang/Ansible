@@ -193,8 +193,6 @@ ansible-playbook -i inventory/hosts.ini playbook/ElasticSearch/deploy-elasticsea
 - [MySQL 数据库](playbook/MySQL/README.md)
 - [MongoDB 数据库](playbook/MongoDB/README.md)
 - [ElasticSearch 搜索引擎](playbook/ElasticSearch/README.md)
-- [Redis 集群](playbook/Redis/README.md)
-- [MySQL 数据库](playbook/MySQL/README.md)
 
 ## 验证部署
 
@@ -350,31 +348,79 @@ kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/conf
 ```
 ansible/
 ├── ansible.cfg                      # Ansible 配置文件
+├── deploy.sh                        # 快速部署脚本
+├── README.md                        # 项目说明文档
+├── .gitignore                       # Git 忽略文件配置
 ├── inventory/
 │   └── hosts.ini                    # 主机清单
 ├── group_vars/
 │   └── all.yml                      # 全局变量
-├── playbook/
-│   └── deploy-k8s-cluster.yml      # 主部署 playbook
-└── roles/
-    ├── system-prepare/              # 系统准备
-    │   └── tasks/main.yml
-    ├── install-containerd/          # 安装 containerd
-    │   ├── tasks/main.yml
-    │   └── handlers/main.yml
-    ├── install-kubernetes/          # 安装 Kubernetes
-    │   └── tasks/main.yml
-    ├── install-kube-vip/           # 安装 kube-vip
-    │   └── tasks/main.yml
-    ├── init-k8s-master/            # 初始化主节点
-    │   ├── tasks/main.yml
-    │   └── templates/kubeadm-config.yaml.j2
-    ├── join-k8s-master/            # 加入主节点
-    │   └── tasks/main.yml
-    ├── join-k8s-worker/            # 加入工作节点
-    │   └── tasks/main.yml
-    └── install-cni/                # 安装 CNI 插件
-        └── tasks/main.yml
+├── logs/                            # 日志目录 (gitignore)
+│   └── kubernetes/
+└── playbook/
+    ├── kubernetes/                  # Kubernetes 集群
+    │   ├── deploy-k8s-cluster.yml
+    │   ├── 01-system-prepare.yml
+    │   ├── 02-install-containerd.yml
+    │   ├── 03-install-kubernetes.yml
+    │   ├── 04-install-kube-vip.yml
+    │   ├── 05-init-kubernetes-master.yml
+    │   ├── 06-join-kubernetes-master.yml
+    │   ├── 07-join-kubernetes-worker.yml
+    │   ├── 08-install-cni.yml
+    │   ├── 09-verify-cluster.yml
+    │   ├── README.md
+    │   └── roles/
+    │       ├── system-prepare/
+    │       ├── install-containerd/
+    │       ├── install-kubernetes/
+    │       ├── install-kube-vip/
+    │       ├── init-kubernetes-master/
+    │       ├── join-kubernetes-master/
+    │       ├── join-kubernetes-worker/
+    │       └── install-cni/
+    ├── GitLab/                      # GitLab CE
+    │   ├── deploy-gitlab.yml
+    │   ├── upgrade-gitlab.yml
+    │   ├── upgrade-step.yml
+    │   ├── README.md
+    │   ├── UPGRADE.md
+    │   └── roles/install-gitlab/
+    ├── Jenkins/                     # Jenkins LTS
+    │   ├── deploy-jenkins.yml
+    │   ├── README.md
+    │   └── roles/install-jenkins/
+    ├── Prometheus/                  # Prometheus 监控
+    │   ├── deploy-prometheus.yml
+    │   ├── deploy-node-exporter-all.yml
+    │   ├── update-prometheus-config.yml
+    │   ├── prometheus-updated.yml.j2
+    │   ├── README.md
+    │   └── roles/install-prometheus/
+    ├── Grafana/                     # Grafana 可视化
+    │   ├── deploy-grafana.yml
+    │   ├── update-dashboards.yml
+    │   ├── README.md
+    │   └── roles/install-grafana/
+    ├── Redis/                       # Redis 集群
+    │   ├── deploy-redis-cluster.yml
+    │   ├── README.md
+    │   └── roles/install-redis-cluster/
+    ├── MySQL/                       # MySQL 数据库
+    │   ├── deploy-mysql.yml
+    │   ├── README.md
+    │   └── roles/install-mysql/
+    ├── MongoDB/                     # MongoDB 数据库
+    │   ├── deploy-mongodb.yml
+    │   ├── README.md
+    │   └── roles/install-mongodb/
+    ├── ElasticSearch/              # ElasticSearch 搜索引擎
+    │   ├── deploy-elasticsearch.yml
+    │   ├── README.md
+    │   └── roles/install-elasticsearch/
+    └── Kafka/                       # Kafka 消息队列
+        ├── deploy-kafka.yml
+        └── roles/install-kafka/
 ```
 
 ## 支持
