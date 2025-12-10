@@ -193,6 +193,7 @@ ansible-playbook -i inventory/hosts.ini playbook/ElasticSearch/deploy-elasticsea
 - [MySQL 数据库](playbook/MySQL/README.md)
 - [MongoDB 数据库](playbook/MongoDB/README.md)
 - [ElasticSearch 搜索引擎](playbook/ElasticSearch/README.md)
+- [CI/CD 自动部署配置](CI-CD-GUIDE.md)
 
 ## 验证部署
 
