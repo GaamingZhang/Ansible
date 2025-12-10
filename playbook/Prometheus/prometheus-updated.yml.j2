@@ -147,55 +147,91 @@ scrape_configs:
     static_configs:
       - targets:
           - '192.168.31.30:9100'
+        labels:
+          node_type: 'k8s_master'
+          nodename: 'k8s-master-1'
+      - targets:
           - '192.168.31.31:9100'
         labels:
           node_type: 'k8s_master'
+          nodename: 'k8s-master-2'
       - targets:
           - '192.168.31.40:9100'
+        labels:
+          node_type: 'k8s_worker'
+          nodename: 'k8s-worker-1'
+      - targets:
           - '192.168.31.41:9100'
+        labels:
+          node_type: 'k8s_worker'
+          nodename: 'k8s-worker-2'
+      - targets:
           - '192.168.31.42:9100'
+        labels:
+          node_type: 'k8s_worker'
+          nodename: 'k8s-worker-3'
+      - targets:
           - '192.168.31.43:9100'
         labels:
           node_type: 'k8s_worker'
+          nodename: 'k8s-worker-4'
       - targets:
           - '192.168.31.50:9100'
         labels:
           node_type: 'gitlab'
+          nodename: 'gitlab-server'
       - targets:
           - '192.168.31.60:9100'
         labels:
           node_type: 'grafana'
+          nodename: 'grafana-server'
       - targets:
           - '192.168.31.70:9100'
         labels:
           node_type: 'jenkins'
+          nodename: 'jenkins-server'
       - targets:
           - '192.168.31.80:9100'
         labels:
           node_type: 'prometheus'
+          nodename: 'prometheus-server'
       - targets:
           - '192.168.31.90:9100'
+        labels:
+          node_type: 'redis'
+          nodename: 'redis-node-1'
+      - targets:
           - '192.168.31.91:9100'
+        labels:
+          node_type: 'redis'
+          nodename: 'redis-node-2'
+      - targets:
           - '192.168.31.92:9100'
         labels:
           node_type: 'redis'
+          nodename: 'redis-node-3'
       - targets:
           - '192.168.31.110:9100'
         labels:
           node_type: 'mysql'
+          nodename: 'mysql-server'
       - targets:
           - '192.168.31.120:9100'
         labels:
           node_type: 'kafka'
+          nodename: 'kafka-server'
       - targets:
           - '192.168.31.130:9100'
         labels:
           node_type: 'rocketmq'
+          nodename: 'rocketmq-server'
       - targets:
           - '192.168.31.140:9100'
         labels:
           node_type: 'mongodb'
+          nodename: 'mongodb-server'
       - targets:
           - '192.168.31.150:9100'
         labels:
           node_type: 'elasticsearch'
+          nodename: 'elasticsearch-server'

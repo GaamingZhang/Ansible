@@ -135,17 +135,11 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [
-            {
-              "options": {
-                "match": "null",
-                "result": {
-                  "text": "全部在线"
-                }
-              },
-              "type": "special"
-            }
-          ],
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -159,7 +153,8 @@
               }
             ]
           }
-        }
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 4,
@@ -169,19 +164,12 @@
       },
       "id": 9,
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "/^nodename$/",
-          "values": true
-        },
-        "textMode": "value",
-        "text": {}
+        "showHeader": true,
+        "footer": {
+          "show": false,
+          "reducer": ["sum"],
+          "fields": ""
+        }
       },
       "pluginVersion": "12.3.0",
       "targets": [
@@ -189,36 +177,21 @@
           "expr": "up{job=\"all_nodes\"} == 0",
           "format": "table",
           "instant": true,
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{instance}} - {{nodename}}",
           "refId": "A"
-        },
-        {
-          "expr": "node_uname_info{job=\"all_nodes\"}",
-          "format": "table",
-          "instant": true,
-          "refId": "B"
         }
       ],
       "title": "离线节点",
       "transformations": [
         {
-          "id": "merge",
-          "options": {}
-        },
-        {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
-              "Value #A": true,
-              "Value #B": true,
+              "Value": true,
               "__name__": true,
-              "domainname": true,
               "job": true,
-              "machine": true,
-              "release": true,
-              "sysname": true,
-              "version": true
+              "node_type": true
             },
             "indexByName": {
               "instance": 0,
@@ -228,24 +201,6 @@
               "instance": "IP地址",
               "nodename": "虚拟机名称"
             }
-          }
-        },
-        {
-          "id": "filterByValue",
-          "options": {
-            "filters": [
-              {
-                "config": {
-                  "id": "equal",
-                  "options": {
-                    "value": 0
-                  }
-                },
-                "fieldName": "Value #A"
-              }
-            ],
-            "match": "any",
-            "type": "include"
           }
         },
         {
