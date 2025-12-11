@@ -161,6 +161,36 @@ Oplog（操作日志）存放在 MongoDB 的 `local` 数据库中，具体集合
 - 必须足够大以覆盖运维窗口（如备份、网络中断），否则 Secondary 可能因无法追溯而需要全量重同步。
 - 查看 oplog 状态：`rs.printReplicationInfo()` 显示 oplog 时间窗口。
 
+**主从同步依靠机制**：
+- **核心：Oplog**：Primary 将所有写操作记录到 `local.oplog.rs`，Secondary 通过拉取 oplog 并重放来实现数据同步。
+- **拉取方式**：Secondary 维护 tailable cursor（可追加游标）持续从 Primary（或其他 Secondary）的 oplog 中读取新条目，无需 Primary 主动推送。
+- **同步点追踪**：每个 Secondary 记录自己已应用的最后 oplog 时间戳（`optime`），下次拉取从该点继续，确保顺序一致。
+
+**增量同步（Incremental Sync / Continuous Replication）**：
+- **定义**：Secondary 正常运行状态下，持续拉取并应用 Primary 的新 oplog 条目。
+- **流程**：
+  1) Secondary 从上次 `optime` 开始拉取 Primary 的 oplog。
+  2) 按顺序重放 oplog（插入/更新/删除），更新本地数据集与索引。
+  3) 定期向 Primary 发送心跳，更新自己的复制进度（`replSetGetStatus` 可见）。
+  4) 若网络短暂中断后 oplog 仍覆盖断点，继续增量同步；否则触发全量同步。
+- **优化**：MongoDB 4.0+ 支持并行重放 oplog（按 `_id` 哈希分配到多线程），提升吞吐与降低延迟。
+
+**全量同步（Initial Sync）**：
+- **触发场景**：
+  - 新节点首次加入副本集。
+  - Secondary 长时间下线后，oplog 窗口不足以追溯到其上次同步点（oplog 已被覆盖）。
+  - 手动执行 `resync` 命令强制全量同步。
+- **流程**：
+  1) **选择源**：Secondary 选择一个健康的节点（通常是 Primary 或最近的 Secondary）作为数据源。
+  2) **克隆数据**：逐个集合复制全量数据到本地（跳过 `local` 数据库），建立索引。
+  3) **记录起始点**：在克隆开始时记录源节点的 oplog 时间戳（`startOptime`）。
+  4) **应用增量**：克隆完成后，从 `startOptime` 开始拉取并应用 oplog（追赶克隆期间的新写入）。
+  5) **追平后转增量**：当延迟收敛到接近实时后，切换到正常增量同步模式。
+- **注意事项**：
+  - 全量同步期间占用大量网络和磁盘 IO，影响源节点性能。
+  - 若源节点 oplog 窗口过小，可能导致追赶阶段再次触发全量同步（循环问题），务必确保 oplog 足够大。
+  - 生产环境建议从 Secondary 而非 Primary 拉取全量数据，减轻主节点压力。
+
 #### 6.1.3 选举机制
 
 **选举触发条件**：
