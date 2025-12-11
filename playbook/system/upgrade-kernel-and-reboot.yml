@@ -1,0 +1,28 @@
+---
+- name: Update kernel package and reboot
+  hosts: allNodes
+  become: true
+  gather_facts: true
+
+  vars:
+    reboot_timeout: 1200
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install linux-image-generic
+      apt:
+        name: linux-image-generic
+        state: present
+      register: kernel_pkg
+
+    - name: Reboot host after kernel install
+      reboot:
+        msg: "Reboot triggered by linux-image-generic installation"
+        pre_reboot_delay: 5
+        reboot_timeout: "{{ reboot_timeout }}"
+        post_reboot_delay: 10
+        connect_timeout: 5
